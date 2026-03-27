@@ -61,6 +61,42 @@ export interface FinalReport {
   competitive_analysis_summary: string;
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// Intelligence Agent types (Step 7)
+// ──────────────────────────────────────────────────────────────────────
+
+export interface PricingEntry {
+  competitor_name: string;
+  explicit_price: string;
+  price_vs_market_avg: string;
+  pricing_model: string;
+  active_promotions: string;
+  price_tier: "low" | "medium" | "high" | "premium";
+}
+
+export interface PricingIntelligence {
+  entries: PricingEntry[];
+  market_avg_estimate: string;
+  our_price_positioning: string;
+}
+
+export interface CompetitorSpecValue {
+  competitor_name: string;
+  value: string;
+}
+
+export interface SpecRow {
+  spec_name: string;
+  our_value: string;
+  competitor_values: CompetitorSpecValue[];
+  advantage_holder: string;
+}
+
+export interface SpecComparison {
+  rows: SpecRow[];
+  our_product_label: string;
+}
+
 export interface AnalysisResult {
   product_description: string;
   market_overview: string;
@@ -72,6 +108,12 @@ export interface AnalysisResult {
   knowledge_graph: KnowledgeGraph;
   graph_insights: string[];
   final_report: FinalReport;
+  // Intelligence Agent output (Step 7)
+  strategic_action_summary: string;
+  pricing_intelligence: PricingIntelligence;
+  spec_comparison: SpecComparison;
+  absolute_strengths: string[];
+  critical_weaknesses: string[];
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -110,4 +152,74 @@ export interface TerminalPayload {
   type: "invalid_input" | "error";
   fallback_message?: string;
   error?: string;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Deep-Dive types (mirrors backend deep-dive schemas)
+// ──────────────────────────────────────────────────────────────────────
+
+export interface SWOTItem {
+  strengths: string[];
+  weaknesses: string[];
+  opportunities: string[];
+  threats: string[];
+}
+
+export interface SingleDeepDiveReport {
+  company_name: string;
+  business_model_detail: string;
+  core_technology: string;
+  key_products: string[];
+  swot: SWOTItem;
+  recent_highlights: string[];
+  customer_pain_points: string[];
+}
+
+export interface ComparisonEntry {
+  company_name: string;
+  core_service: string;
+  target_customer: string;
+  pricing_model: string;
+  market_position: string;
+  top_strength: string;
+  top_weakness: string;
+}
+
+export interface ComparisonReport {
+  entries: ComparisonEntry[];
+  summary: string;
+}
+
+export interface DeepDiveApiResult {
+  mode: "single" | "comparison";
+  single_report: SingleDeepDiveReport | null;
+  comparison_report: ComparisonReport | null;
+  raw_research: SearchResult[];
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// One-Page Report types
+// ──────────────────────────────────────────────────────────────────────
+
+export type ReportType =
+  | "market_entry"
+  | "competitive_bid"
+  | "investment_decision";
+
+export interface OnepageSection {
+  title: string;
+  content: string;
+}
+
+export interface SummaryCard {
+  label: string;
+  value: string;
+}
+
+export interface OnepageReport {
+  report_type: ReportType;
+  title: string;
+  subtitle: string;
+  sections: OnepageSection[];
+  summary_cards: SummaryCard[];
 }

@@ -6,20 +6,48 @@ import {
   BarChart2,
   BookOpen,
   Building2,
+  Check,
+  CircleDollarSign,
   ExternalLink,
+  FileText,
   Globe,
+  Layers,
+  Loader2,
   Network,
+  Search,
   Shield,
   TrendingUp,
+  Users,
+  X,
+  Zap,
 } from "lucide-react";
-import type { AnalysisResult, GraphNode, Phase1CompetitorItem } from "@/types/analysis";
+import { useState } from "react";
+
+import { OnepageReportDrawer } from "@/components/OnepageReportDrawer";
+import type {
+  AnalysisResult,
+  ComparisonEntry,
+  ComparisonReport,
+  GraphNode,
+  Phase1CompetitorItem,
+  PricingEntry,
+  PricingIntelligence,
+  ReportType,
+  SingleDeepDiveReport,
+  SpecComparison,
+  SpecRow,
+  SWOTItem,
+} from "@/types/analysis";
+
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
 interface ReportViewProps {
   result: AnalysisResult;
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Small helper components
+// Shared helper components (unchanged from original)
 // ──────────────────────────────────────────────────────────────────────
 
 function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -80,9 +108,8 @@ function NodeTypeBadge({ type }: { type: GraphNode["type"] }) {
   return <span className={classes[type]}>{labels[type]}</span>;
 }
 
-// Threat level bar: maps 1-10 score to 5 filled segments
 function ThreatBar({ score }: { score: number }) {
-  const filled  = Math.round(score / 2);   // 0-5
+  const filled  = Math.round(score / 2);
   const color   =
     score >= 8 ? "bg-red-500"
     : score >= 5 ? "bg-amber-500"
@@ -122,7 +149,616 @@ function CompetitorTypeBadge({ type }: { type: Phase1CompetitorItem["type"] }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Main report component
+// Selection Action Bar
+// ──────────────────────────────────────────────────────────────────────
+
+function SelectionActionBar({
+  selectedCount,
+  onSingle,
+  onComparison,
+  onClear,
+  isLoading,
+}: {
+  selectedCount: number;
+  onSingle: () => void;
+  onComparison: () => void;
+  onClear: () => void;
+  isLoading: boolean;
+}) {
+  if (selectedCount === 0) {
+    return (
+      <div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-slate-50 border border-slate-200">
+        <Search className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+        <p className="text-xs text-slate-400">
+          체크박스로 기업을 선택하면 심층 분석을 실행할 수 있습니다.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-white border border-brand-600/30 shadow-sm">
+      <span className="flex items-center gap-1.5 text-xs font-medium text-slate-700 flex-shrink-0">
+        <Check className="h-3.5 w-3.5 text-brand-600" />
+        {selectedCount}개 기업 선택됨
+      </span>
+
+      <div className="flex items-center gap-2 ml-auto">
+        {selectedCount === 1 && (
+          <button
+            onClick={onSingle}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isLoading ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Search className="h-3 w-3" />
+            )}
+            단일 기업 심층 분석
+          </button>
+        )}
+
+        {selectedCount >= 2 && (
+          <button
+            onClick={onComparison}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isLoading ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Users className="h-3 w-3" />
+            )}
+            다중 기업 비교 보고서
+          </button>
+        )}
+
+        <button
+          onClick={onClear}
+          disabled={isLoading}
+          className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 disabled:opacity-50 transition-colors"
+        >
+          <X className="h-3 w-3" />
+          선택 초기화
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────
+// Feature 1: Executive Insight Panel
+// ──────────────────────────────────────────────────────────────────────
+
+function ExecutiveInsightPanel({
+  summary,
+  strengths,
+  weaknesses,
+}: {
+  summary: string;
+  strengths: string[];
+  weaknesses: string[];
+}) {
+  const lines = summary
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  return (
+    <div className="rounded-xl bg-slate-900 p-6 text-white">
+      <div className="flex items-center gap-2 mb-4">
+        <Zap className="h-4 w-4 text-slate-300" />
+        <h2 className="text-sm font-semibold text-slate-100 uppercase tracking-wider">
+          Executive Insight — 즉시 실행 전략
+        </h2>
+      </div>
+
+      <ul className="space-y-2.5 mb-5">
+        {lines.map((line, i) => (
+          <li key={i} className="flex items-start gap-2.5">
+            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center mt-0.5">
+              {i + 1}
+            </span>
+            <span className="text-sm text-slate-200 leading-relaxed">
+              {line.replace(/^\d+\)\s*/, "")}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="grid grid-cols-2 gap-3 border-t border-slate-700 pt-4">
+        <div>
+          <p className="text-xs font-semibold text-emerald-400 mb-2 uppercase tracking-wider">
+            절대적 강점 ({strengths.length})
+          </p>
+          <ul className="space-y-1.5">
+            {strengths.slice(0, 3).map((s, i) => (
+              <li key={i} className="flex items-start gap-1.5">
+                <span className="text-emerald-400 mt-0.5 flex-shrink-0 text-xs">+</span>
+                <span className="text-xs text-slate-300 leading-relaxed">{s}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-red-400 mb-2 uppercase tracking-wider">
+            즉시 보완 필요 ({weaknesses.length})
+          </p>
+          <ul className="space-y-1.5">
+            {weaknesses.slice(0, 3).map((w, i) => (
+              <li key={i} className="flex items-start gap-1.5">
+                <span className="text-red-400 mt-0.5 flex-shrink-0 text-xs">-</span>
+                <span className="text-xs text-slate-300 leading-relaxed">{w}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Feature 2: Pricing Intelligence
+// ──────────────────────────────────────────────────────────────────────
+
+const PRICE_TIER_CONFIG: Record<
+  PricingEntry["price_tier"],
+  { label: string; dot: string; text: string }
+> = {
+  low:     { label: "저가형",   dot: "bg-slate-400",  text: "text-slate-500" },
+  medium:  { label: "중가형",   dot: "bg-amber-400",  text: "text-amber-600" },
+  high:    { label: "고가형",   dot: "bg-orange-500", text: "text-orange-600" },
+  premium: { label: "프리미엄", dot: "bg-red-500",    text: "text-red-600" },
+};
+
+function PricingTierBadge({ tier }: { tier: PricingEntry["price_tier"] }) {
+  const cfg = PRICE_TIER_CONFIG[tier] ?? PRICE_TIER_CONFIG.medium;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium ${cfg.text}`}>
+      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+}
+
+function PricingIntelligenceSection({ data }: { data: PricingIntelligence }) {
+  return (
+    <div className="card p-6">
+      <SectionHeader
+        icon={<CircleDollarSign className="h-4 w-4" />}
+        title="Pricing Intelligence — 가격 경쟁력 분석"
+      />
+
+      <div className="overflow-x-auto mb-4">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-slate-200 text-left">
+              <th className="py-2 pr-4 font-semibold text-slate-500">경쟁사</th>
+              <th className="py-2 pr-4 font-semibold text-slate-500">가격</th>
+              <th className="py-2 pr-4 font-semibold text-slate-500">가격 등급</th>
+              <th className="py-2 pr-4 font-semibold text-slate-500">가격 모델</th>
+              <th className="py-2 pr-4 font-semibold text-slate-500">시장 평균 대비</th>
+              <th className="py-2 font-semibold text-slate-500">프로모션</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.entries.map((e) => (
+              <tr
+                key={e.competitor_name}
+                className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors"
+              >
+                <td className="py-2.5 pr-4 font-semibold text-slate-800">{e.competitor_name}</td>
+                <td className="py-2.5 pr-4 text-slate-700 font-mono text-xs">{e.explicit_price}</td>
+                <td className="py-2.5 pr-4">
+                  <PricingTierBadge tier={e.price_tier} />
+                </td>
+                <td className="py-2.5 pr-4 text-slate-600">{e.pricing_model}</td>
+                <td className="py-2.5 pr-4 text-slate-600 max-w-[200px] leading-relaxed">
+                  {e.price_vs_market_avg}
+                </td>
+                <td className="py-2.5 text-slate-600">
+                  {e.active_promotions === "없음" ? (
+                    <span className="text-slate-400">없음</span>
+                  ) : (
+                    e.active_promotions
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-slate-100 pt-4">
+        <div className="bg-slate-50 rounded-lg p-3">
+          <p className="text-xs font-semibold text-slate-500 mb-1">시장 평균 가격대</p>
+          <p className="text-xs text-slate-700 leading-relaxed">{data.market_avg_estimate}</p>
+        </div>
+        <div className="bg-brand-50 rounded-lg p-3">
+          <p className="text-xs font-semibold text-brand-600 mb-1">당사 가격 포지셔닝 방향</p>
+          <p className="text-xs text-slate-700 leading-relaxed">{data.our_price_positioning}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Feature 3: Spec Comparison
+// ──────────────────────────────────────────────────────────────────────
+
+function SpecComparisonSection({ data }: { data: SpecComparison }) {
+  const competitorNames = Array.from(
+    new Set(
+      data.rows.flatMap((r) => r.competitor_values.map((cv) => cv.competitor_name))
+    )
+  );
+
+  return (
+    <div className="card p-6">
+      <SectionHeader
+        icon={<Layers className="h-4 w-4" />}
+        title={`스펙 정밀 대조 — ${data.our_product_label} vs 경쟁사`}
+      />
+      <p className="text-xs text-slate-400 mb-4">
+        배경 강조: 녹색 = 당사 우세, 적색 = 경쟁사 우세
+      </p>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-slate-200 text-left">
+              <th className="py-2 pr-4 font-semibold text-slate-500 min-w-[120px]">스펙 항목</th>
+              <th className="py-2 pr-4 font-semibold text-brand-600 min-w-[120px]">
+                {data.our_product_label}
+              </th>
+              {competitorNames.map((name) => (
+                <th key={name} className="py-2 pr-4 font-semibold text-slate-500 min-w-[120px]">
+                  {name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.rows.map((row) => {
+              const competitorMap = Object.fromEntries(
+                row.competitor_values.map((cv) => [cv.competitor_name, cv.value])
+              );
+
+              const ourCellClass =
+                row.advantage_holder === "our_product"
+                  ? "bg-emerald-50 font-semibold text-emerald-800"
+                  : "text-slate-700";
+
+              return (
+                <tr key={row.spec_name} className="border-b border-slate-100 last:border-0">
+                  <td className="py-2.5 pr-4 font-medium text-slate-600">{row.spec_name}</td>
+                  <td className={`py-2.5 pr-4 ${ourCellClass}`}>
+                    {row.our_value === "미기재" ? (
+                      <span className="text-slate-400">미기재</span>
+                    ) : (
+                      row.our_value
+                    )}
+                  </td>
+                  {competitorNames.map((name) => {
+                    const val = competitorMap[name] ?? "—";
+                    const isWinner = row.advantage_holder === name;
+                    return (
+                      <td
+                        key={name}
+                        className={`py-2.5 pr-4 ${
+                          isWinner ? "bg-red-50 text-red-700 font-semibold" : "text-slate-600"
+                        }`}
+                      >
+                        {val === "미공개" ? (
+                          <span className="text-slate-400">미공개</span>
+                        ) : (
+                          val
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Feature 4: Competitive SWOT Dashboard (absolute strengths/weaknesses)
+// ──────────────────────────────────────────────────────────────────────
+
+function CompetitiveSwotDashboard({
+  strengths,
+  weaknesses,
+}: {
+  strengths: string[];
+  weaknesses: string[];
+}) {
+  return (
+    <div className="card p-6">
+      <SectionHeader
+        icon={<Shield className="h-4 w-4" />}
+        title="전략적 강점 및 즉시 보완점"
+      />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Absolute Strengths */}
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider mb-3">
+            절대적 강점 — 경쟁사 대비 확인된 우위
+          </p>
+          <ul className="space-y-2.5">
+            {strengths.map((s, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded-full bg-emerald-600 text-white text-xs font-bold mt-0.5">
+                  {i + 1}
+                </span>
+                <span className="text-xs text-slate-700 leading-relaxed">{s}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Critical Weaknesses */}
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <p className="text-xs font-semibold text-red-700 uppercase tracking-wider mb-3">
+            치명적 약점 — 즉각 보완 필요
+          </p>
+          <ul className="space-y-2.5">
+            {weaknesses.map((w, i) => {
+              const parts = w.split("— 보완 방향:");
+              const weakness = parts[0]?.trim() ?? w;
+              const action = parts[1]?.trim();
+              return (
+                <li key={i} className="space-y-0.5">
+                  <div className="flex items-start gap-2">
+                    <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded-full bg-red-600 text-white text-xs font-bold mt-0.5">
+                      {i + 1}
+                    </span>
+                    <span className="text-xs text-slate-700 leading-relaxed font-medium">
+                      {weakness}
+                    </span>
+                  </div>
+                  {action && (
+                    <p className="ml-6 text-xs text-red-700 bg-red-100 rounded px-2 py-1 leading-relaxed">
+                      보완 방향: {action}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// SWOT 2x2 grid
+// ──────────────────────────────────────────────────────────────────────
+
+function SWOTGrid({ swot }: { swot: SWOTItem }) {
+  const quadrants = [
+    {
+      label: "Strengths — 강점",
+      items: swot.strengths,
+      bg: "bg-emerald-50",
+      border: "border-emerald-200",
+      title: "text-emerald-700",
+      dot: "bg-emerald-500",
+    },
+    {
+      label: "Weaknesses — 약점",
+      items: swot.weaknesses,
+      bg: "bg-red-50",
+      border: "border-red-200",
+      title: "text-red-700",
+      dot: "bg-red-500",
+    },
+    {
+      label: "Opportunities — 기회",
+      items: swot.opportunities,
+      bg: "bg-blue-50",
+      border: "border-blue-200",
+      title: "text-blue-700",
+      dot: "bg-blue-500",
+    },
+    {
+      label: "Threats — 위협",
+      items: swot.threats,
+      bg: "bg-amber-50",
+      border: "border-amber-200",
+      title: "text-amber-700",
+      dot: "bg-amber-500",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {quadrants.map(({ label, items, bg, border, title, dot }) => (
+        <div key={label} className={`rounded-lg border ${border} ${bg} p-4`}>
+          <p className={`text-xs font-semibold ${title} mb-2`}>{label}</p>
+          <ul className="space-y-1.5">
+            {items.map((item, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className={`flex-shrink-0 w-1.5 h-1.5 rounded-full mt-1.5 ${dot}`} />
+                <span className="text-xs text-slate-700 leading-relaxed">{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Single deep-dive report view
+// ──────────────────────────────────────────────────────────────────────
+
+function SingleDeepDiveReportView({ report }: { report: SingleDeepDiveReport }) {
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="card p-6 border-l-4 border-brand-600">
+        <div className="flex items-center gap-2 mb-1">
+          <Building2 className="h-4 w-4 text-slate-500" />
+          <h3 className="text-base font-bold text-slate-900">{report.company_name}</h3>
+          <span className="ml-auto text-xs text-slate-400 font-mono">단독 심층 분석</span>
+        </div>
+        <p className="text-sm text-slate-700 leading-relaxed">{report.business_model_detail}</p>
+      </div>
+
+      {/* Core Tech + Key Products */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="card p-5">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+            핵심 기술력
+          </p>
+          <p className="text-sm text-slate-700 leading-relaxed">{report.core_technology}</p>
+        </div>
+        <div className="card p-5">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+            주요 제품 / 서비스
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {report.key_products.map((p) => (
+              <span
+                key={p}
+                className="inline-block px-2.5 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium"
+              >
+                {p}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* SWOT */}
+      <div className="card p-6">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
+          SWOT 분석
+        </p>
+        <SWOTGrid swot={report.swot} />
+      </div>
+
+      {/* Recent Highlights + Pain Points */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="card p-5">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+            최근 1년 주요 이슈
+          </p>
+          <BulletList items={report.recent_highlights} />
+        </div>
+        <div className="card p-5">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+            고객 불만 및 경쟁 약점
+          </p>
+          <BulletList items={report.customer_pain_points} variant="threat" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Comparison report view
+// ──────────────────────────────────────────────────────────────────────
+
+const COMPARISON_ROWS: { key: keyof ComparisonEntry; label: string }[] = [
+  { key: "core_service",    label: "핵심 서비스" },
+  { key: "target_customer", label: "타겟 고객" },
+  { key: "pricing_model",   label: "가격 정책" },
+  { key: "market_position", label: "시장 포지션" },
+  { key: "top_strength",    label: "핵심 강점" },
+  { key: "top_weakness",    label: "핵심 약점" },
+];
+
+function ComparisonReportView({ report }: { report: ComparisonReport }) {
+  return (
+    <div className="space-y-5">
+      {/* Comparison table */}
+      <div className="card p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Users className="h-4 w-4 text-slate-500" />
+          <h3 className="section-title">기업 비교 분석</h3>
+          <span className="ml-auto text-xs text-slate-400 font-mono">
+            {report.entries.length}개 기업 비교
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-slate-200">
+                <th className="py-2.5 pr-4 text-left font-semibold text-slate-500 w-28 min-w-[7rem]">
+                  항목
+                </th>
+                {report.entries.map((e) => (
+                  <th
+                    key={e.company_name}
+                    className="py-2.5 px-3 text-left font-semibold text-slate-800"
+                  >
+                    {e.company_name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {COMPARISON_ROWS.map(({ key, label }) => (
+                <tr key={key} className="border-b border-slate-100 last:border-0">
+                  <td className="py-2.5 pr-4 font-medium text-slate-500 align-top">
+                    {label}
+                  </td>
+                  {report.entries.map((e) => (
+                    <td
+                      key={e.company_name}
+                      className="py-2.5 px-3 text-slate-700 leading-relaxed align-top"
+                    >
+                      {key === "top_strength" && (
+                        <span className="flex items-start gap-1.5">
+                          <span className="text-emerald-500 mt-0.5 flex-shrink-0">+</span>
+                          {e[key]}
+                        </span>
+                      )}
+                      {key === "top_weakness" && (
+                        <span className="flex items-start gap-1.5">
+                          <span className="text-red-400 mt-0.5 flex-shrink-0">-</span>
+                          {e[key]}
+                        </span>
+                      )}
+                      {key !== "top_strength" && key !== "top_weakness" && e[key]}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Summary */}
+      <div className="card p-5 border-l-4 border-slate-300">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+          비교 분석 종합 인사이트
+        </p>
+        <p className="text-sm text-slate-700 leading-relaxed">{report.summary}</p>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Main ReportView component
 // ──────────────────────────────────────────────────────────────────────
 
 export function ReportView({ result }: ReportViewProps) {
@@ -134,8 +770,56 @@ export function ReportView({ result }: ReportViewProps) {
     graph_insights,
     raw_research,
     market_overview,
+    strategic_action_summary,
+    pricing_intelligence,
+    spec_comparison,
+    absolute_strengths,
+    critical_weaknesses,
   } = result;
 
+  // ── Deep-dive selection state ─────────────────────────────────────
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
+
+  function toggleSelect(name: string) {
+    setSelectedNames((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedNames(new Set());
+  }
+
+  function handleDeepDive() {
+    const company_names = Array.from(selectedNames);
+    if (company_names.length === 0) return;
+    try {
+      localStorage.setItem(
+        "deepDiveParams",
+        JSON.stringify({
+          company_names,
+          product_description: result.product_description,
+        })
+      );
+    } catch {
+      // localStorage unavailable — open tab anyway; page will show an error
+    }
+    window.open("/deep-dive", "_blank");
+  }
+
+  // ── One-page report drawer state ──────────────────────────────────
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerType, setDrawerType] = useState<ReportType | null>(null);
+
+  function openDrawer(type: ReportType) {
+    setDrawerType(type);
+    setDrawerOpen(true);
+  }
+
+  // ── Derived ───────────────────────────────────────────────────────
   const directCompetitors   = competitors.filter((c) => c.type === "direct");
   const indirectCompetitors = competitors.filter((c) => c.type === "indirect");
 
@@ -152,8 +836,24 @@ export function ReportView({ result }: ReportViewProps) {
   }, {}) ?? {};
 
   return (
+    <>
+    <OnepageReportDrawer
+      isOpen={drawerOpen}
+      reportType={drawerType}
+      result={result}
+      onClose={() => setDrawerOpen(false)}
+    />
     <div className="space-y-6">
-      {/* ── 1. Executive Summary ──────────────────────────────────── */}
+      {/* ── 1. Executive Insight Panel (NEW) ─────────────────────── */}
+      {strategic_action_summary && (
+        <ExecutiveInsightPanel
+          summary={strategic_action_summary}
+          strengths={absolute_strengths ?? []}
+          weaknesses={critical_weaknesses ?? []}
+        />
+      )}
+
+      {/* ── 1b. Executive Summary (기존 — 상세 narrative) ────────── */}
       <div className="card p-6 border-l-4 border-brand-600">
         <SectionHeader icon={<BarChart2 className="h-4 w-4" />} title="Executive Summary" />
         <p className="text-sm text-slate-700 leading-relaxed">
@@ -179,7 +879,12 @@ export function ReportView({ result }: ReportViewProps) {
         </p>
       </div>
 
-      {/* ── 3. Phase 1: Market Scan Table ────────────────────────── */}
+      {/* ── 3. Pricing Intelligence (NEW) ────────────────────────── */}
+      {pricing_intelligence?.entries?.length > 0 && (
+        <PricingIntelligenceSection data={pricing_intelligence} />
+      )}
+
+      {/* ── 3b. Phase 1: Market Scan Table (with checkboxes) ──────── */}
       {phase1_competitors.length > 0 && (
         <div className="card p-6">
           <SectionHeader
@@ -189,10 +894,23 @@ export function ReportView({ result }: ReportViewProps) {
           <p className="text-xs text-slate-400 mb-4">
             시장 내 잠재적 경쟁사를 광범위하게 나열한 목록입니다. 위협도(relevance_score) 기준 내림차순 정렬.
           </p>
+
+          {/* Selection action bar */}
+          <SelectionActionBar
+            selectedCount={selectedNames.size}
+            onSingle={handleDeepDive}
+            onComparison={handleDeepDive}
+            onClear={clearSelection}
+            isLoading={false}
+          />
+
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-slate-200 text-left">
+                  <th className="py-2 pr-3 font-semibold text-slate-500 w-8">
+                    <span className="sr-only">선택</span>
+                  </th>
                   <th className="py-2 pr-3 font-semibold text-slate-500 w-6">#</th>
                   <th className="py-2 pr-3 font-semibold text-slate-500">기업명</th>
                   <th className="py-2 pr-3 font-semibold text-slate-500">유형</th>
@@ -203,53 +921,78 @@ export function ReportView({ result }: ReportViewProps) {
                 </tr>
               </thead>
               <tbody>
-                {phase1_competitors.map((c, i) => (
-                  <tr
-                    key={c.name}
-                    className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors"
-                  >
-                    <td className="py-2.5 pr-3 text-slate-400 font-mono">{i + 1}</td>
-                    <td className="py-2.5 pr-3">
-                      <div className="font-semibold text-slate-800">{c.name}</div>
-                      {c.website && (
-                        <a
-                          href={c.website.startsWith("http") ? c.website : `https://${c.website}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-0.5 text-brand-600 hover:text-brand-700 mt-0.5"
+                {phase1_competitors.map((c, i) => {
+                  const checked = selectedNames.has(c.name);
+                  return (
+                    <tr
+                      key={c.name}
+                      onClick={() => toggleSelect(c.name)}
+                      className={`border-b border-slate-100 last:border-0 cursor-pointer transition-colors ${
+                        checked
+                          ? "bg-brand-50"
+                          : "hover:bg-slate-50"
+                      }`}
+                    >
+                      <td className="py-2.5 pr-3">
+                        <div
+                          className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                            checked
+                              ? "bg-brand-600 border-brand-600"
+                              : "border-slate-300 bg-white"
+                          }`}
                         >
-                          <ExternalLink className="h-2.5 w-2.5" />
-                          <span className="text-xs">웹사이트</span>
-                        </a>
-                      )}
-                    </td>
-                    <td className="py-2.5 pr-3">
-                      <CompetitorTypeBadge type={c.type} />
-                    </td>
-                    <td className="py-2.5 pr-3 text-slate-600 leading-relaxed max-w-xs">
-                      {c.description}
-                    </td>
-                    <td className="py-2.5 pr-3 text-slate-600">
-                      {c.market_share_estimate || <span className="text-slate-400">—</span>}
-                    </td>
-                    <td className="py-2.5 pr-3 text-slate-600 whitespace-nowrap">
-                      <div>{c.funding_info || <span className="text-slate-400">—</span>}</div>
-                      {c.founded_year && (
-                        <div className="text-slate-400">{c.founded_year}년 설립</div>
-                      )}
-                    </td>
-                    <td className="py-2.5">
-                      <ThreatBar score={c.relevance_score} />
-                    </td>
-                  </tr>
-                ))}
+                          {checked && <Check className="h-2.5 w-2.5 text-white" />}
+                        </div>
+                      </td>
+                      <td className="py-2.5 pr-3 text-slate-400 font-mono">{i + 1}</td>
+                      <td className="py-2.5 pr-3">
+                        <div className="font-semibold text-slate-800">{c.name}</div>
+                        {c.website && (
+                          <a
+                            href={c.website.startsWith("http") ? c.website : `https://${c.website}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-0.5 text-brand-600 hover:text-brand-700 mt-0.5"
+                          >
+                            <ExternalLink className="h-2.5 w-2.5" />
+                            <span className="text-xs">웹사이트</span>
+                          </a>
+                        )}
+                      </td>
+                      <td className="py-2.5 pr-3">
+                        <CompetitorTypeBadge type={c.type} />
+                      </td>
+                      <td className="py-2.5 pr-3 text-slate-600 leading-relaxed max-w-xs">
+                        {c.description}
+                      </td>
+                      <td className="py-2.5 pr-3 text-slate-600">
+                        {c.market_share_estimate || <span className="text-slate-400">—</span>}
+                      </td>
+                      <td className="py-2.5 pr-3 text-slate-600 whitespace-nowrap">
+                        <div>{c.funding_info || <span className="text-slate-400">—</span>}</div>
+                        {c.founded_year && (
+                          <div className="text-slate-400">{c.founded_year}년 설립</div>
+                        )}
+                      </td>
+                      <td className="py-2.5">
+                        <ThreatBar score={c.relevance_score} />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* ── 4. Phase 2: Deep Competitor Profiles ─────────────────── */}
+      {/* ── 4b. Spec Comparison (NEW) ─────────────────────────────── */}
+      {spec_comparison?.rows?.length > 0 && (
+        <SpecComparisonSection data={spec_comparison} />
+      )}
+
+      {/* ── 4. Phase 2: Deep Competitor Profiles (with checkboxes) ── */}
       <div>
         <div className="flex items-center gap-2 mb-3">
           <Building2 className="h-4 w-4 text-slate-500" />
@@ -327,34 +1070,42 @@ export function ReportView({ result }: ReportViewProps) {
           ))}
 
           {indirectCompetitors.map((c) => (
-            <div key={c.name} className="card p-5 border-dashed">
-              <div className="flex items-start justify-between mb-1">
-                <h3 className="text-sm font-semibold text-slate-900">{c.name}</h3>
-                <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-medium flex-shrink-0 ml-2">
-                  간접/대체재
-                </span>
-              </div>
-              {c.estimated_market_position && (
-                <p className="text-xs text-slate-500 mb-2 italic">{c.estimated_market_position}</p>
-              )}
-              <p className="text-xs text-slate-600 leading-relaxed mb-3">{c.description}</p>
-              {c.strengths.length > 0 && (
-                <div className="mb-2">
-                  <p className="text-xs font-medium text-emerald-700 mb-1">강점</p>
-                  <ul className="space-y-0.5">
-                    {c.strengths.map((s) => (
-                      <li key={s} className="flex items-start gap-1.5">
-                        <span className="text-emerald-500 mt-1 flex-shrink-0">+</span>
-                        <span className="text-xs text-slate-600">{s}</span>
-                      </li>
-                    ))}
-                  </ul>
+              <div key={c.name} className="card p-5 border-dashed">
+                <div className="flex items-start justify-between mb-1">
+                  <h3 className="text-sm font-semibold text-slate-900">{c.name}</h3>
+                  <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-medium flex-shrink-0 ml-2">
+                    간접/대체재
+                  </span>
                 </div>
-              )}
-            </div>
+                {c.estimated_market_position && (
+                  <p className="text-xs text-slate-500 mb-2 italic">{c.estimated_market_position}</p>
+                )}
+                <p className="text-xs text-slate-600 leading-relaxed mb-3">{c.description}</p>
+                {c.strengths.length > 0 && (
+                  <div className="mb-2">
+                    <p className="text-xs font-medium text-emerald-700 mb-1">강점</p>
+                    <ul className="space-y-0.5">
+                      {c.strengths.map((s) => (
+                        <li key={s} className="flex items-start gap-1.5">
+                          <span className="text-emerald-500 mt-1 flex-shrink-0">+</span>
+                          <span className="text-xs text-slate-600">{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
           ))}
         </div>
       </div>
+
+      {/* ── 5b. Competitive SWOT Dashboard (NEW) ─────────────────── */}
+      {(absolute_strengths?.length > 0 || critical_weaknesses?.length > 0) && (
+        <CompetitiveSwotDashboard
+          strengths={absolute_strengths ?? []}
+          weaknesses={critical_weaknesses ?? []}
+        />
+      )}
 
       {/* ── 5. Opportunities & Threats ───────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -491,6 +1242,66 @@ export function ReportView({ result }: ReportViewProps) {
           </p>
         </div>
       )}
+
+      {/* ── 9. Purpose-Driven Action Panel ───────────────────────── */}
+      <div className="card p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Zap className="h-4 w-4 text-slate-400" />
+          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            목적별 원페이지 보고서 생성
+          </h2>
+        </div>
+        <p className="text-xs text-slate-400 mb-5">
+          수집된 분석 데이터를 바탕으로 용도에 맞는 원페이지 보고서를 즉시 생성합니다.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <button
+            onClick={() => openDrawer("market_entry")}
+            className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3.5 text-left hover:border-brand-400 hover:bg-brand-50/30 transition-colors group"
+          >
+            <TrendingUp className="h-4 w-4 text-slate-400 group-hover:text-brand-600 flex-shrink-0 mt-0.5 transition-colors" />
+            <div>
+              <p className="text-xs font-semibold text-slate-700 group-hover:text-brand-700 transition-colors">
+                시장 진입전략 보고서
+              </p>
+              <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                경쟁 빈틈 · 타겟 세분화 · GTM 메시지
+              </p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => openDrawer("competitive_bid")}
+            className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3.5 text-left hover:border-brand-400 hover:bg-brand-50/30 transition-colors group"
+          >
+            <FileText className="h-4 w-4 text-slate-400 group-hover:text-brand-600 flex-shrink-0 mt-0.5 transition-colors" />
+            <div>
+              <p className="text-xs font-semibold text-slate-700 group-hover:text-brand-700 transition-colors">
+                경쟁입찰 제안 보고서
+              </p>
+              <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                USP 우위 · ROI 정량화 · 반론 대응
+              </p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => openDrawer("investment_decision")}
+            className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3.5 text-left hover:border-brand-400 hover:bg-brand-50/30 transition-colors group"
+          >
+            <BarChart2 className="h-4 w-4 text-slate-400 group-hover:text-brand-600 flex-shrink-0 mt-0.5 transition-colors" />
+            <div>
+              <p className="text-xs font-semibold text-slate-700 group-hover:text-brand-700 transition-colors">
+                내부 투자 결정 보고서
+              </p>
+              <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                시장 규모 · 예산 추정 · 리스크 헷징
+              </p>
+            </div>
+          </button>
+        </div>
+      </div>
     </div>
+    </>
   );
 }

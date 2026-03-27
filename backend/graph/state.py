@@ -40,6 +40,13 @@ class AgentState(TypedDict):
     # ── Reporter output ───────────────────────────────────────────────
     final_report: dict  # Matches ReporterOutput.model_dump()
 
+    # ── Intelligence Agent output (Step 7) ───────────────────────────
+    strategic_action_summary: str
+    pricing_intelligence: dict   # PricingIntelligenceOutput.model_dump()
+    spec_comparison: dict        # SpecComparisonOutput.model_dump()
+    absolute_strengths: list[str]
+    critical_weaknesses: list[str]
+
     # ── Workflow control ──────────────────────────────────────────────
     current_stage: str
     error: Optional[str]

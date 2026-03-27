@@ -20,6 +20,7 @@ from backend.graph.edges import route_after_market_scan, route_on_error
 from backend.graph.nodes import (
     competitor_select_node,
     graph_structuring_node,
+    intelligence_node,
     market_scan_node,
     planner_node,
     reporter_node,
@@ -39,6 +40,7 @@ def build_graph():
     workflow.add_node("researcher",         researcher_node)
     workflow.add_node("graph_structuring",  graph_structuring_node)
     workflow.add_node("reporter",           reporter_node)
+    workflow.add_node("intelligence",       intelligence_node)
 
     # Entry point
     workflow.set_entry_point("market_scan")
@@ -69,6 +71,11 @@ def build_graph():
         route_on_error,
         {"continue": "reporter", "end": END},
     )
-    workflow.add_edge("reporter", END)
+    workflow.add_conditional_edges(
+        "reporter",
+        route_on_error,
+        {"continue": "intelligence", "end": END},
+    )
+    workflow.add_edge("intelligence", END)
 
     return workflow.compile()

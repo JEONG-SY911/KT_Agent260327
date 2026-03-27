@@ -27,11 +27,12 @@ from backend.graph.state import AgentState
 from backend.schemas import (
     CompetitorSelectionOutput,
     GraphStructuringOutput,
+    IntelligenceOutput,
     MarketScanOutput,
     PlannerOutput,
     ReporterOutput,
 )
-from backend.tools.search import search_web_async
+from backend.tools.search import enrich_results_with_full_text, search_web_async
 
 logger = logging.getLogger(__name__)
 
@@ -377,8 +378,15 @@ async def researcher_node(state: AgentState, writer: StreamWriter) -> dict[str, 
             r["market_scope"] = "domestic_kr"
         all_results.extend(results)
 
+    # ── (C) Deep reading — fetch full body text for top URLs ─────────
+    # Executed after all searches complete; concurrent Jina Reader fetches
+    # enrich each result with 'full_text' for downstream nodes.
+    writer({"type": "searching", "node": "researcher", "step": 4,
+            "message": "수집된 페이지 딥 리딩 중..."})
+    all_results = await enrich_results_with_full_text(all_results, max_pages=5)
+
     writer({"type": "stage_complete", "node": "researcher", "step": 4,
-            "message": "관련 자료 수집 완료"})
+            "message": "관련 자료 수집 및 딥 리딩 완료"})
 
     return {
         "raw_research": all_results,
@@ -431,7 +439,11 @@ async def graph_structuring_node(state: AgentState, writer: StreamWriter) -> dic
         for c in state.get("competitors", [])
     )
     research_snippets = "\n".join(
-        f"[{r.get('source', '')}] {r.get('title', '')}: {r.get('snippet', '')[:200]}"
+        "[{src}] {title}: {body}".format(
+            src=r.get("source", ""),
+            title=r.get("title", ""),
+            body=(r.get("full_text") or r.get("snippet", ""))[:500],
+        )
         for r in state.get("raw_research", [])[:10]
     )
 
@@ -517,10 +529,129 @@ async def reporter_node(state: AgentState, writer: StreamWriter) -> dict[str, An
         return {"error": str(exc), "current_stage": "error", "final_report": {}}
 
     writer({"type": "stage_complete", "node": "reporter", "step": 6,
-            "message": "분석 완료"})
-    writer({"type": "complete", "message": "마켓 인텔리전스 보고서 생성 완료"})
+            "message": "보고서 초안 완성 — 인텔리전스 분석 준비 중"})
 
     return {
         "final_report": result.model_dump(),
-        "current_stage": "complete",
+        "current_stage": "reporter_complete",
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 7. Intelligence Agent  (pricing, spec comparison, executive summary)
+# ──────────────────────────────────────────────────────────────────────
+
+_INTELLIGENCE_SYSTEM = """당신은 냉철하고 객관적인 시니어 전략 컨설턴트입니다.
+수집된 시장 데이터, 경쟁사 프로필, 검색 결과를 종합하여 4가지 정형 분석을 수행합니다.
+모든 추론은 사실과 수집 데이터에 기반하며, 추측인 경우 반드시 '(추정)' 을 명시합니다.
+이모티콘, 감정적 표현 사용 금지. 한국어로 서술.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[STEP 1: 경영진 전략 요약]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"이 시장에서 우리가 지금 당장 취해야 할 전략적 액션은?"
+반드시 3줄 이내, '1)', '2)', '3)' 으로 시작.
+일반론 금지 — 이 제품과 이 시장 상황에 특화된 구체적 액션만 서술.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[STEP 2: 가격 정보 추출]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+수집된 검색 결과와 경쟁사 프로필에서 각 경쟁사의 가격 정보를 추출합니다.
+  - explicit_price: 공개 가격 (없으면 "비공개 — 협상 기반")
+  - price_vs_market_avg: 시장 평균 대비 포지셔닝 (추정 시 "(추정)" 명시)
+  - pricing_model: 종량제 / 구독형(월정액) / 구독형(연정액) / 협상형 / 프리미엄 협상형
+  - active_promotions: 진행 중 할인/프로모션 (없으면 "없음")
+  - price_tier: low / medium / high / premium 중 하나로 반드시 분류
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[STEP 3: 스펙 비교]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+사용자 제품 설명에서 기술 스펙을 추출하고, 경쟁사와 1:1 비교합니다.
+최소 4개, 최대 8개의 스펙 항목을 구성합니다.
+각 스펙마다 advantage_holder를 반드시 명시:
+  "our_product" = 당사 우세 | 경쟁사명 = 해당 경쟁사 우세 | "equivalent" = 동등 | "unknown" = 비교 불가
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[STEP 4: 절대적 강점 및 치명적 약점 추론]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+수집된 스펙, 가격, 고객 반응 데이터를 종합합니다.
+  - absolute_strengths: 수치/사실 기반으로 확인된 당사 제품의 명확한 우위 3~5개
+  - critical_weaknesses: '[약점 내용] — 보완 방향: [구체적 액션]' 형식으로 3~5개"""
+
+_INTELLIGENCE_HUMAN = """제품 설명: {product_description}
+
+핵심 경쟁사 (Phase 2 선정):
+{competitors_summary}
+
+수집된 검색 데이터 (최근 리서치):
+{research_snippets}
+
+최종 보고서 요약:
+{report_summary}
+
+위 정보를 바탕으로 4가지 정형 분석을 수행해 주세요."""
+
+
+async def intelligence_node(state: AgentState, writer: StreamWriter) -> dict[str, Any]:
+    writer({"type": "stage_start", "node": "intelligence", "step": 7,
+            "message": "가격·스펙·전략 인사이트 종합 중..."})
+
+    structured_llm = _llm().with_structured_output(
+        IntelligenceOutput, method="function_calling"
+    )
+    chain = ChatPromptTemplate.from_messages([
+        ("system", _INTELLIGENCE_SYSTEM),
+        ("human", _INTELLIGENCE_HUMAN),
+    ]) | structured_llm
+
+    competitors_summary = "\n".join(
+        f"- {c.get('name', '')} ({c.get('type', '')}): {c.get('description', '')} "
+        f"| 강점: {', '.join(c.get('strengths', [])[:2])} "
+        f"| 약점: {', '.join(c.get('weaknesses', [])[:2])}"
+        for c in state.get("competitors", [])
+    )
+    research_snippets = "\n".join(
+        "[{src}] {title}: {body}".format(
+            src=r.get("source", ""),
+            title=r.get("title", ""),
+            body=(r.get("full_text") or r.get("snippet", ""))[:500],
+        )
+        for r in state.get("raw_research", [])[:15]
+    )
+    final_report = state.get("final_report", {})
+    report_summary = (
+        f"Executive: {final_report.get('executive_summary', '')[:300]}\n"
+        f"Positioning: {final_report.get('positioning_summary', '')[:200]}"
+    )
+
+    try:
+        result: IntelligenceOutput = await chain.ainvoke({
+            "product_description": state["product_description"],
+            "competitors_summary": competitors_summary,
+            "research_snippets": research_snippets,
+            "report_summary": report_summary,
+        })
+    except Exception as exc:
+        logger.error("Intelligence node failed: %s", exc)
+        writer({"type": "error", "message": str(exc)})
+        return {
+            "error": str(exc), "current_stage": "error",
+            "strategic_action_summary": "",
+            "pricing_intelligence": {},
+            "spec_comparison": {},
+            "absolute_strengths": [],
+            "critical_weaknesses": [],
+        }
+
+    writer({"type": "stage_complete", "node": "intelligence", "step": 7,
+            "message": "인텔리전스 분석 완료"})
+    writer({"type": "complete", "message": "마켓 인텔리전스 보고서 생성 완료"})
+
+    return {
+        "strategic_action_summary": result.strategic_action_summary,
+        "pricing_intelligence":     result.pricing_intelligence.model_dump(),
+        "spec_comparison":          result.spec_comparison.model_dump(),
+        "absolute_strengths":       result.absolute_strengths,
+        "critical_weaknesses":      result.critical_weaknesses,
+        "current_stage":            "complete",
     }

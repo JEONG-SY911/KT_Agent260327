@@ -51,6 +51,11 @@ const INITIAL_STEPS: AgentStep[] = [
     label: "Reporter Agent",       description: "보고서 작성",
     status: "pending", message: "대기 중",
   },
+  {
+    step: 7, node: "intelligence",
+    label: "Intelligence",         description: "가격·스펙·전략 인사이트 종합",
+    status: "pending", message: "대기 중",
+  },
 ];
 
 const BACKEND_URL =
@@ -116,7 +121,7 @@ export default function Home() {
         } else if (payload.type === "stage_complete" && payload.step != null) {
           setStepStatus(payload.step, "complete", payload.message);
           // Show skeleton when the last step completes (report incoming)
-          if (payload.step === 6) setShowSkeleton(true);
+          if (payload.step === 7) setShowSkeleton(true);
         } else if (payload.type === "searching" && payload.step != null) {
           setStepStatus(payload.step, "active", payload.message);
         }

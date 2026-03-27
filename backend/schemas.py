@@ -171,3 +171,184 @@ class ReporterOutput(BaseModel):
     competitive_analysis_summary: str = Field(
         description="경쟁 환경 종합 분석 (2~3문장)"
     )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Deep-Dive Agent schemas
+# ──────────────────────────────────────────────────────────────────────
+
+class SWOTItem(BaseModel):
+    strengths: list[str] = Field(description="강점 2~4개")
+    weaknesses: list[str] = Field(description="약점 2~4개")
+    opportunities: list[str] = Field(description="기회 요소 2~4개 (사용자 제품 관점에서 공략 가능한 영역)")
+    threats: list[str] = Field(description="위협 요소 2~4개 (사용자 제품이 받는 경쟁 위협)")
+
+
+class SingleDeepDiveReport(BaseModel):
+    company_name: str = Field(description="분석 대상 기업명")
+    business_model_detail: str = Field(
+        description="비즈니스 모델 상세 설명 (수익 구조, 고객 세그먼트, 가격 정책 포함, 3~5문장)"
+    )
+    core_technology: str = Field(
+        description="핵심 기술력 및 기술 스택 요약 (2~3문장)"
+    )
+    key_products: list[str] = Field(
+        description="주요 제품/서비스 목록 2~4개"
+    )
+    swot: SWOTItem = Field(description="SWOT 분석 (사용자 제품과의 경쟁 관계 관점)")
+    recent_highlights: list[str] = Field(
+        description="최근 1년 주요 이슈 (신제품, 파트너십, 투자, 인수 등) 2~4개"
+    )
+    customer_pain_points: list[str] = Field(
+        description="수집된 고객 불만 및 경쟁 약점 2~4개"
+    )
+
+
+class ComparisonEntry(BaseModel):
+    company_name: str = Field(description="기업명")
+    core_service: str = Field(description="핵심 서비스 한 줄 요약")
+    target_customer: str = Field(description="주요 타겟 고객 세그먼트")
+    pricing_model: str = Field(description="가격 정책 (공개 정보 기준; 알 수 없으면 '비공개/문의')")
+    market_position: str = Field(description="시장 내 포지션 요약 (한 문장)")
+    top_strength: str = Field(description="경쟁 측면 핵심 강점 1개")
+    top_weakness: str = Field(description="경쟁 측면 핵심 약점 1개")
+
+
+class ComparisonReport(BaseModel):
+    entries: list[ComparisonEntry] = Field(description="기업별 비교 항목 (선택된 기업 수만큼)")
+    summary: str = Field(description="비교 분석 종합 인사이트 (3~5문장, 사용자 제품의 포지셔닝 시사점 포함)")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Intelligence Agent schemas  (Step 7 — pricing, spec, executive summary)
+# ──────────────────────────────────────────────────────────────────────
+
+class PricingEntry(BaseModel):
+    competitor_name: str = Field(description="경쟁사 기업명")
+    explicit_price: str = Field(
+        description=(
+            "공개된 명시적 가격 정보 (예: '월 $2,000/GPU 노드', 'vCPU당 $0.05/hr'). "
+            "공개 정보가 없으면 '비공개 — 협상 기반'으로 작성."
+        )
+    )
+    price_vs_market_avg: str = Field(
+        description=(
+            "해당 시장의 평균가 대비 포지셔닝 서술 "
+            "(예: '시장 평균 대비 약 15% 저렴 (추정)', '프리미엄 포지션 — 평균 대비 30% 이상'). "
+            "추정인 경우 반드시 '(추정)' 명시."
+        )
+    )
+    pricing_model: str = Field(
+        description="가격 모델 분류: '종량제', '구독형(월정액)', '구독형(연정액)', '협상형', '프리미엄 협상형' 중 하나"
+    )
+    active_promotions: str = Field(
+        description=(
+            "현재 진행 중인 프로모션 또는 할인 정보. "
+            "없으면 '없음', 있으면 내용과 할인율/기간 포함."
+        )
+    )
+    price_tier: Literal["low", "medium", "high", "premium"] = Field(
+        description=(
+            "UI 시각화용 가격 등급: "
+            "low=저가형, medium=중가형, high=고가형, premium=프리미엄"
+        )
+    )
+
+
+class PricingIntelligenceOutput(BaseModel):
+    entries: list[PricingEntry] = Field(description="경쟁사별 가격 정보 항목")
+    market_avg_estimate: str = Field(
+        description="해당 시장 전반의 가격대 서술 (예: '국내 GPU 클라우드 시장 평균 월 $1,500~$3,000 수준')"
+    )
+    our_price_positioning: str = Field(
+        description=(
+            "당사 가격 정보가 입력된 경우 경쟁 포지셔닝 분석, "
+            "없는 경우 수집된 시장 정보 기반 권장 포지셔닝 방향 (1~2문장)"
+        )
+    )
+
+
+class CompetitorSpecValue(BaseModel):
+    competitor_name: str = Field(description="경쟁사 기업명")
+    value: str = Field(description="해당 스펙 값. 공개 정보 없으면 '미공개'.")
+
+
+class SpecRow(BaseModel):
+    spec_name: str = Field(description="스펙 항목명 (예: GPU 모델, 메모리, 인프라 리전, 최소 계약 단위)")
+    our_value: str = Field(
+        description="사용자 제품 설명에서 추출한 당사 스펙 값. 언급 없으면 '미기재'."
+    )
+    competitor_values: list[CompetitorSpecValue] = Field(
+        description="경쟁사별 동일 스펙 값 목록"
+    )
+    advantage_holder: str = Field(
+        description=(
+            "해당 스펙에서 우위를 가진 주체: "
+            "'our_product'(당사 우세), 경쟁사명(해당 경쟁사 우세), "
+            "'equivalent'(동등), 'unknown'(비교 불가)"
+        )
+    )
+
+
+class SpecComparisonOutput(BaseModel):
+    rows: list[SpecRow] = Field(description="스펙 비교 행 목록 (최소 4개, 최대 8개)")
+    our_product_label: str = Field(
+        description="제품 설명에서 추론한 당사 제품/서비스명 (짧게, 예: 'GPUaaS 플랫폼')"
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# One-Page Report schemas  (purpose-driven: market_entry / competitive_bid / investment_decision)
+# ──────────────────────────────────────────────────────────────────────
+
+class OnepageSection(BaseModel):
+    title: str = Field(description="섹션 제목 (간결하게, 15자 이내)")
+    content: str = Field(
+        description="섹션 본문 (2~4문장, 핵심 사실과 수치 중심, 일반론 금지)"
+    )
+
+
+class SummaryCard(BaseModel):
+    label: str = Field(description="카드 항목명 (8자 이내)")
+    value: str = Field(
+        description="해당 항목의 핵심 값 또는 한 줄 결론 (구체적 수치·명사 포함)"
+    )
+
+
+class OnepageReport(BaseModel):
+    title: str = Field(description="보고서 제목")
+    subtitle: str = Field(description="보고서 부제목 — 제품/시장을 특정하는 한 줄")
+    sections: list[OnepageSection] = Field(
+        description="핵심 섹션 정확히 3개. 각 섹션은 독립적인 전략 관점을 다룸."
+    )
+    summary_cards: list[SummaryCard] = Field(
+        description="요약 카드 정확히 4개. 가장 중요한 수치·결론 4가지."
+    )
+
+
+class IntelligenceOutput(BaseModel):
+    strategic_action_summary: str = Field(
+        description=(
+            "경영진이 즉시 의사결정할 수 있는 전략적 액션 요약. "
+            "반드시 3줄 이내. 일반론 금지 — 이 제품과 이 시장에 특화된 구체적 액션만 서술. "
+            "각 줄은 '1)', '2)', '3)' 으로 시작."
+        )
+    )
+    pricing_intelligence: PricingIntelligenceOutput = Field(
+        description="경쟁사 가격 정보 종합"
+    )
+    spec_comparison: SpecComparisonOutput = Field(
+        description="당사 vs 경쟁사 스펙 비교"
+    )
+    absolute_strengths: list[str] = Field(
+        description=(
+            "수집된 스펙/가격/고객 반응 데이터에서 확인된 당사 제품의 경쟁사 대비 절대적 우위 3~5개. "
+            "각 항목은 '어떤 근거로 우위인지' 사실 기반으로 서술."
+        )
+    )
+    critical_weaknesses: list[str] = Field(
+        description=(
+            "즉각 보완하지 않으면 시장 점유를 잃을 위험이 있는 치명적 약점 3~5개. "
+            "각 항목은 '[약점 내용] — 보완 방향: [구체적 액션]' 형식으로 작성."
+        )
+    )

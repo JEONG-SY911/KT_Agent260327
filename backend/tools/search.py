@@ -1,20 +1,44 @@
 """
-Async web search tool using DuckDuckGo.
+Async web search and full-text extraction tools.
 
-DuckDuckGo's Python client is synchronous, so each call is offloaded to a
-thread via asyncio.to_thread.  A fresh DDGS() instance is created per call
-because the class is not thread-safe when shared across concurrent threads.
+Search layer:
+  DuckDuckGo's Python client is synchronous, so each call is offloaded to a
+  thread via asyncio.to_thread.  A fresh DDGS() instance is created per call
+  because the class is not thread-safe when shared across concurrent threads.
+  Falls back to structured mock data when the search is unavailable.
 
-Falls back to structured mock data when the search is unavailable (rate
-limit, network error, etc.) so the workflow always makes forward progress.
+Deep reading layer:
+  After collecting search result URLs, enrich_results_with_full_text() fetches
+  the full body text of each page via the Jina Reader API (r.jina.ai).
+  Jina returns clean markdown; short navigation/ad lines are stripped locally.
+  httpx is used for async HTTP; failures are silently skipped so the
+  workflow always makes forward progress even when pages are unreachable.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from urllib.parse import urlparse
 
+import httpx
+
 logger = logging.getLogger(__name__)
+
+# ──────────────────────────────────────────────────────────────────────
+# Deep-reading constants
+# ──────────────────────────────────────────────────────────────────────
+
+_JINA_BASE         = "https://r.jina.ai/"
+_FULL_TEXT_MAX     = 4000   # characters kept per page (prevents token bloat)
+_JINA_TIMEOUT      = 8.0    # seconds; skip page if exceeded
+_MIN_LINE_LEN      = 25     # lines shorter than this are treated as nav/ads
+# Domains known to block scrapers or return low-value content
+_SKIP_DOMAINS = {
+    "twitter.com", "x.com", "facebook.com", "instagram.com",
+    "linkedin.com", "youtube.com", "reddit.com",
+    "gartner.com", "statista.com",   # paywalled research aggregators
+}
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -26,6 +50,43 @@ def _extract_domain(url: str) -> str:
         return urlparse(url).netloc
     except Exception:
         return url
+
+
+def _clean_jina_text(raw: str) -> str:
+    """
+    Strip navigation/ad noise from Jina markdown output and truncate.
+    Removes lines shorter than _MIN_LINE_LEN characters (menu items,
+    breadcrumbs, single-word labels) and collapses excess whitespace.
+    """
+    lines = raw.splitlines()
+    kept = [
+        ln for ln in lines
+        if len(ln.strip()) >= _MIN_LINE_LEN
+        or ln.strip().startswith("#")   # keep markdown headings regardless of length
+    ]
+    cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+    return cleaned[:_FULL_TEXT_MAX]
+
+
+async def _fetch_full_text_one(url: str) -> str:
+    """
+    Fetch full body text for a single URL via Jina Reader API.
+    Returns empty string on any failure so callers can skip gracefully.
+    """
+    domain = _extract_domain(url)
+    if any(skip in domain for skip in _SKIP_DOMAINS):
+        return ""
+    try:
+        async with httpx.AsyncClient(timeout=_JINA_TIMEOUT, follow_redirects=True) as client:
+            response = await client.get(
+                f"{_JINA_BASE}{url}",
+                headers={"Accept": "text/plain", "User-Agent": "Mozilla/5.0"},
+            )
+            if response.status_code == 200:
+                return _clean_jina_text(response.text)
+    except Exception as exc:
+        logger.debug("Jina fetch failed for '%s': %s", url, exc)
+    return ""
 
 
 def _sync_search(query: str, max_results: int) -> list[dict]:
@@ -85,6 +146,34 @@ def _mock_results(query: str) -> list[dict]:
 # ──────────────────────────────────────────────────────────────────────
 # Public API
 # ──────────────────────────────────────────────────────────────────────
+
+async def enrich_results_with_full_text(
+    results: list[dict],
+    max_pages: int = 5,
+) -> list[dict]:
+    """
+    Augment search result dicts with 'full_text' by fetching each URL via
+    Jina Reader.  Only the first max_pages results are fetched (to control
+    latency); remaining results get full_text="".
+
+    Fetches are executed concurrently with asyncio.gather so the total
+    wall-clock time is roughly equal to the single slowest request.
+    """
+    urls   = [r.get("url", "") for r in results]
+    to_fetch = min(max_pages, len(urls))
+
+    tasks  = [_fetch_full_text_one(u) for u in urls[:to_fetch]]
+    texts  = list(await asyncio.gather(*tasks))
+    # Pad remaining results that were not fetched
+    texts += [""] * (len(results) - to_fetch)
+
+    for result, full_text in zip(results, texts):
+        result["full_text"] = full_text
+
+    enriched = sum(1 for t in texts if t)
+    logger.info("Deep-read: %d/%d pages enriched with full text.", enriched, to_fetch)
+    return results
+
 
 async def search_web_async(query: str, max_results: int = 5) -> list[dict]:
     """
