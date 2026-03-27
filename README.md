@@ -1,13 +1,19 @@
 # Market Intelligence Agent
 ## 자율형 시장동향 및 경쟁사 분석 AI 에이전트
 
-제품/서비스 설명을 입력하면 AI 에이전트가 자동으로 경쟁사를 탐색하고 마켓 인텔리전스 보고서를 생성하는 웹 애플리케이션입니다.
-
 ---
 
-## 왜 이 시스템이 필요한가
+## 1. 가치 제안 및 문제 정의
 
-> "신규 사업 아이템이 생기면 시장조사부터 시작해야 하는데, 보통 2~3일이 걸린다."
+### 1-1. 타겟 고객 및 문제 정의
+
+**타겟 고객**
+B2B 신사업 기획 담당자, 전략기획팀, 영업/입찰 담당자, 스타트업 대표
+
+**핵심 불편함**
+
+> "신규 사업 아이템이 생기면 시장조사부터 시작해야 하는데, 보통 2~3일이 걸린다.
+> 경쟁사를 직접 찾고, 가격을 알아보고, 스펙을 비교하고, 보고서까지 만들려면 하루가 사라진다."
 
 | 기존 방식 | 이 시스템 |
 |-----------|-----------|
@@ -25,69 +31,538 @@
 
 ---
 
-## 기술 스택
+### 1-2. AI 도입의 당위성
 
-| 영역 | 기술 |
-|------|------|
-| LLM | OpenAI GPT-4o-mini (`langchain-openai` 1.1.12) |
-| 에이전트 프레임워크 | LangGraph 1.1.3 (StateGraph) |
-| LLM 오케스트레이션 | LangChain 1.2.13 + `with_structured_output` |
-| 웹 검색 | DuckDuckGo Search (`asyncio.to_thread` 비동기 래퍼) |
-| 딥 스크래핑 | Jina Reader API (`httpx` 비동기, 본문 최대 4,000자) |
-| API 서버 | FastAPI 0.135.2, uvicorn 0.42.0 |
-| 실시간 스트리밍 | SSE (`sse-starlette` 3.3.3) |
-| 문서 파싱 | PyMuPDF (PDF), python-docx (DOCX) |
-| 프론트엔드 | Next.js 15 (App Router), React 19, TypeScript, TailwindCSS v3 |
-| PDF 생성 | html2canvas 1.4.1 + jsPDF 4.2.1 (클라이언트 사이드) |
-| 아이콘 | lucide-react |
+**왜 LLM이어야 하는가?**
+
+기존 키워드 검색이나 데이터베이스 조회로는 풀 수 없는 과제들이 있다.
+
+| 과제 | 기존 검색/DB | LLM 기반 에이전트 |
+|------|-------------|-------------------|
+| "이 제품의 BM과 같은 카테고리인가?" | 불가 (키워드 매칭 한계) | BM 자동 분류 후 필터링 |
+| "경쟁사 약점을 우리 차별화로 연결" | 불가 | 포지셔닝 분석 자동 생성 |
+| "TAM/SAM/SOM 추정" | 공개된 리포트 있을 때만 가능 | 수집 데이터 기반 추론 |
+| "입찰용 반론 대응 논리 생성" | 완전 불가 | Objection Handling 자동화 |
+| "지식 그래프로 시장 구조 시각화" | 불가 | Graph RAG 자동 구축 |
+
+**적절한 AI 기능 조합**
+
+- **GPT-4o-mini**: 비용 효율적인 LLM (분석 1회당 약 $0.10~0.25)
+- **LangGraph StateGraph**: 7개 에이전트를 순차 오케스트레이션, 에러 발생 시 조기 종료
+- **Structured Output (with_structured_output)**: 할루시네이션을 억제하고 JSON 스키마 강제
+- **DuckDuckGo Search**: 실시간 웹 데이터 수집 (정적 DB 한계 극복)
+- **Jina Reader API**: 검색 결과 URL에서 본문 전체 추출 (스니펫 한계 극복)
+- **Graph RAG**: 수집 데이터를 지식 그래프로 구조화해 관계 기반 인사이트 도출
 
 ---
 
-## 프로젝트 구조
+### 1-3. 시장성 및 기대 효과
+
+**시장 규모**
+- 글로벌 마켓 인텔리전스 소프트웨어 시장: 2024년 기준 약 $4.5B, 연 12% 성장 (Gartner)
+- 국내 B2B SaaS 시장에서 전략기획 솔루션 수요 급증
+
+**도입 시 기대 효과**
+
+```
+1. 의사결정 속도 향상
+   시장조사 → 전략 수립 사이클: 1주일 → 당일
+
+2. 인건비 절감
+   시장조사 리서처 1인 연 4,000만원 → AI 에이전트 월 수십만원
+
+3. 커버리지 확장
+   담당자 역량 의존 → 국내외 경쟁사 편향 없이 자동 탐색
+
+4. 표준화된 보고서 품질
+   개인 편차 제거, 항상 동일한 분석 프레임워크 적용
+```
+
+---
+
+## 2. 에이전트 설계 및 워크플로우
+
+### 2-1. 프롬프트 전략 및 페르소나
+
+**부여된 역할: "냉철하고 객관적인 시니어 전략 컨설턴트"**
+
+모든 노드에 동일한 페르소나를 유지하되, 각 단계 목적에 맞게 지침을 특화했다.
+
+**페르소나 설계 원칙**
+
+```
+1. 감정적 표현, 과장 금지 → 사실과 데이터 중심 서술
+2. 이모티콘 사용 금지 → 전문 B2B 문서 형식 준수
+3. "추정" 표기 의무화 → 근거 없는 수치 서술 방지 (할루시네이션 완화)
+4. 한국어 서술 + 국내 기업 필수 포함 → 국내 비즈니스 맥락 우선
+```
+
+**노드별 프롬프트 특화 전략**
+
+| 노드 | 페르소나 특화 지침 | 핵심 제약 |
+|------|--------------------|-----------|
+| market_scan | BM 분류 후 동일 카테고리만 필터 | Nvidia 같은 하드웨어 제조사 배제 규칙 명시 |
+| competitor_select | 타겟 고객 겹침 기준 선정 | 선정 이유를 selection_rationale로 설명 강제 |
+| planner | 국내 50% 이상 키워드 의무화 | 글로벌 편향 방지 |
+| reporter | TAM/SAM/SOM 수치 추정 의무 | 공개 정보 없으면 "(추정)" 명시 강제 |
+| intelligence | "지금 당장 취해야 할 액션" 3줄 | 일반론 금지, 이 제품·시장 특화만 허용 |
+
+---
+
+### 2-2. 시나리오 및 예외 처리
+
+**입력 유효성 검증 (market_scan_node)**
+
+```python
+# 유효 조건: 제품 카테고리 + 타겟 고객 + 핵심 기능 중 ≥ 2가지 명시
+is_valid_input: bool
+
+# 무효 예시: "AI", "챗봇 만들어줘", 10단어 미만 모호한 입력
+# → fallback_message로 구체적인 재입력 안내 제공
+```
+
+**예외 처리 흐름**
+
+```
+사용자 입력
+    │
+    ▼
+[market_scan] ──► is_valid_input = False
+    │                   │
+    │                   ▼
+    │           terminal 이벤트 발송
+    │           (fallback_message 포함)
+    │                   │
+    │                   ▼
+    │           UI: 재입력 안내 화면
+    │
+    ▼ (is_valid_input = True)
+
+[각 노드] ──► 예외 발생
+    │               │
+    │               ▼
+    │       error 필드 설정
+    │       route_on_error() 조기 종료
+    │               │
+    │               ▼
+    │       terminal 이벤트 발송
+    │       (error 메시지 포함)
+    │
+    ▼ (성공)
+[complete 이벤트]
+```
+
+**돌발 입력 대응 사례**
+
+| 상황 | 대응 방식 |
+|------|-----------|
+| "Nvidia 같은 제조사가 경쟁사로 뜸" | BM 분류 후 필터링 (SaaS/IaaS vs 하드웨어 OEM 구분) |
+| "경쟁사가 5개 미만으로 나옴" | Phase 1 스키마에 "최소 5개 이상" 필드 설명 강제 |
+| "가격 공개 안 된 경쟁사" | explicit_price = "비공개 — 협상 기반" 으로 명시 |
+| "TAM 수치 불명확" | "(추정)" 접미어 의무 표기로 신뢰도 전달 |
+| "빈 검색 결과" | Mock 데이터 fallback으로 워크플로우 중단 없이 계속 |
+
+---
+
+### 2-3. 도구 활용 및 흐름 설계
+
+**전체 파이프라인**
+
+```
+사용자 입력 (제품/서비스 설명 또는 PDF/DOCX 업로드)
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 1: Market Scan Node                                   │
+│  - GPT-4o-mini + Structured Output                         │
+│  - BM 분류 → 국내외 경쟁사 5개 이상 발굴                     │
+│  - relevance_score 1~10 자동 산정                           │
+└─────────────────────────────────────────────────────────────┘
+         │  is_valid_input = True
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 2: Competitor Selection Node                          │
+│  - BM 재검증 → 핵심 경쟁사 2~3곳 선정                       │
+│  - Jina Reader API → 경쟁사 웹사이트 본문 전체 추출          │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 3: Planner Node                                       │
+│  - 심층 분석용 검색 키워드 4~6개 생성                        │
+│  - 국내 타겟 키워드 50% 이상 의무                            │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 4: Web Researcher Node                                │
+│  - Phase A: 키워드 기반 DuckDuckGo 검색 (키워드당 3건)      │
+│  - Phase B: 국내 필수 검색 2건 (SKT/KT/삼성SDS 등 강제 포함) │
+│  - Phase C: Jina Reader로 상위 5페이지 본문 전체 추출        │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 5: Graph Structuring Node                             │
+│  - 수집 데이터 → 지식 그래프 (노드 6~12개, 엣지 5개 이상)   │
+│  - 노드 타입: company / product / trend / threat             │
+│  - 관계 타입: competes_with / leverages / threatens 등       │
+│  - method="function_calling" (중첩 Pydantic 직렬화 안정성)  │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 6: Reporter Node                                      │
+│  - TAM / SAM / SOM 추정 (근거 없으면 "(추정)" 강제)          │
+│  - 진입 장벽 / 차별화 포인트 / GTM 채널                      │
+│  - 리스크 시나리오 / 전략 권고사항                           │
+│  - ReporterOutput Pydantic 스키마 16개 필드 강제 생성        │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 7: Intelligence Node                                  │
+│  - 경영진 3줄 즉시 실행 전략 요약                            │
+│  - 가격 인텔리전스 (시장 평균 대비 포지셔닝)                 │
+│  - 스펙 비교표 (advantage_holder 명시)                       │
+│  - 절대적 강점 / 즉시 보완 필요 약점                         │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+SSE complete 이벤트 → 프론트엔드 대시보드 렌더링
+```
+
+**핵심 기술 선택 근거**
+
+| 기술 | 선택 이유 |
+|------|-----------|
+| LangGraph StateGraph | 7개 노드의 상태를 TypedDict로 엄격하게 관리, 조기 종료 라우팅 지원 |
+| SSE (Server-Sent Events) | 45~90초 분석 시간 동안 실시간 진행 상황 전달 → UX 이탈 방지 |
+| Structured Output | 스키마 강제로 할루시네이션 방지, 프론트엔드 타입 일치 보장 |
+| Jina Reader API | 스니펫(200자)이 아닌 본문 전체(4,000자) 추출로 분석 밀도 향상 |
+| method="function_calling" | 중첩 Pydantic 모델 직렬화 시 안정성 확보 |
+
+**핵심 코드 패턴**
+
+```python
+# LangGraph 스트리밍 — 진행 이벤트 + 상태 델타 동시 수신
+async for stream_mode, chunk in graph.astream(initial, stream_mode=["updates", "custom"]):
+    if stream_mode == "custom":
+        yield {"event": "progress", "data": json.dumps(chunk)}
+    elif stream_mode == "updates":
+        accumulated.update(chunk[node_name])
+
+# Structured Output — 스키마 강제로 할루시네이션 방지
+chain = prompt | llm.with_structured_output(ReporterOutput)
+result: ReporterOutput = await chain.ainvoke({"context": ...})
+```
+
+```typescript
+// SSE 청크 파서 — fetch ReadableStream 경계 불일치 처리
+export function createSSEParser(onEvent) {
+    let buffer = "";
+    return function parse(chunk: string) {
+        buffer += chunk;
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? ""; // 불완전 라인은 버퍼 보존
+    };
+}
+```
+
+---
+
+## 3. 사용자 경험(UX) 및 프로토타입
+
+### 3-1. 대화 인터페이스 및 경험 설계
+
+**사용 흐름**
+
+```
+[1단계] 입력
+  - 제품/서비스 설명 텍스트 입력
+  - 또는 PDF/DOCX 파일 업로드 → 자동 텍스트 추출
+
+[2단계] 실시간 진행 (45~90초)
+  - 좌측: 7단계 에이전트 진행 상황 실시간 업데이트
+  - 우측: 로딩 → Step 7 완료 시 Skeleton 로더로 전환
+
+[3단계] 종합 보고서 대시보드
+  ┌─ 목적별 PDF 내보내기 (5종) — 최상단 고정
+  │
+  ├─ Executive Insight Panel (다크 패널)
+  │   - 즉시 실행 전략 3줄
+  │   - 절대적 강점 / 즉시 보완 약점 나란히 표시
+  │
+  ├─ Executive Summary
+  │
+  ├─ 시장 포지셔닝 분석
+  │
+  ├─ 가격 인텔리전스 테이블
+  │   - 경쟁사별 가격 / 가격 모델 / 시장 평균 대비 비교
+  │
+  ├─ Phase 1 Market Scan 표 (체크박스 선택 가능)
+  │
+  ├─ 스펙 비교표 (셀 색상: 초록=당사 우위 / 빨강=경쟁사 우위)
+  │
+  ├─ Phase 2 심층 경쟁사 프로필 카드
+  │
+  ├─ 시장 구조 분석 (TAM/SAM/SOM / 진입장벽 / 차별화 / GTM)
+  │
+  ├─ Graph RAG 인사이트 + 지식 그래프
+  │
+  ├─ 전략적 권고사항
+  │
+  └─ 참고 문헌 및 출처
+
+[4단계] 후속 액션 (선택)
+  ┌─ 기업 심층 분석 (새 탭)
+  │   Phase 1 표에서 체크박스로 선택 → 새 탭에서 SWOT + 비즈니스 모델 심층 분석
+  │
+  └─ 원페이지 보고서 API
+      - 시장 진입전략 / 경쟁입찰 제안 / 내부 투자 결정 용도별 1페이지 JSON 반환
+```
+
+**UX 핵심 설계 결정**
+
+| 결정 | 이유 |
+|------|------|
+| 실시간 SSE 진행 표시 | 90초 대기 시 이탈 방지 — 각 단계 메시지로 "지금 무엇을 하는 중인지" 전달 |
+| PDF 내보내기 → 최상단 배치 | 보고서 열람 전에도 즉시 접근 가능, 발표/공유 목적 우선 |
+| 심층 분석 → 새 탭 오픈 | 기존 보고서를 덮어쓰지 않고 원본 대시보드와 비교 가능 |
+| Skeleton 로더 | 보고서 렌더링 직전 레이아웃 예고로 인지 부하 감소 |
+| 5종 PDF → 용도별 분리 | 경영진용 / 투자자용 / 입찰용 각각 다른 포맷과 강조점 적용 |
+| localStorage 파라미터 전달 | URL 길이 제한 없이 긴 제품 설명을 새 탭에 안전하게 전달 |
+
+---
+
+### 3-2. 답변의 신뢰도와 품질
+
+**할루시네이션 최소화 전략 4가지**
+
+**1. Structured Output 강제 스키마**
+```
+LLM이 자유 텍스트를 생성하는 것이 아니라,
+미리 정의된 Pydantic 스키마의 각 필드를 채우도록 강제.
+→ 형식 이탈 불가, 필드 누락 방지
+```
+
+**2. "(추정)" 명시 의무화**
+```
+수치 데이터(TAM, 가격, 점유율)는 공개 정보가 없을 경우
+반드시 "(추정)" 또는 "공개 정보 없음" 표기를 프롬프트에서 강제.
+→ 사실인 것처럼 수치를 꾸미는 것 방지
+```
+
+**3. 실제 웹 데이터 기반 분석 (RAG)**
+```
+Researcher Node: 실시간 DuckDuckGo 검색 + Jina 본문 추출
+→ 정적 학습 데이터가 아닌 최신 검색 데이터를 컨텍스트로 활용
+→ "수집된 데이터에서 확인된 사실만 사용" 지침 명시
+```
+
+**4. BM 필터링으로 관련성 확보**
+```
+시장 스캔 단계에서 BM 카테고리 불일치 기업 자동 배제
+→ 관련 없는 기업 정보로 인한 오류 분석 방지
+```
+
+**출처 추적**
+
+모든 분석의 근거가 된 검색 결과(제목, URL, 출처 도메인, 스니펫)를
+보고서 최하단 "참고 문헌" 섹션에 최대 12건까지 표시.
+
+---
+
+## 4. 발표 및 설득력
+
+### 4-1. 구현 과정에서의 고민
+
+**고민 1: "국내 기업이 글로벌에 밀려 빠지는 문제"**
+```
+[문제] 검색 키워드가 영문 위주로 생성되면 AWS/GCP/Azure가 나오고,
+       SKT 클라우드/KT 클라우드/네이버클라우드 같은 국내 경쟁사는 빠짐
+
+[해결] Researcher Node에 "Phase B" 추가:
+       플래너 키워드와 무관하게 항상 실행되는 국내 필수 검색 쿼리 내장
+       → "국내 클라우드 SKT KT 삼성SDS LG CNS 네이버클라우드 시장 점유율" 강제 실행
+```
+
+**고민 2: "스니펫 200자로는 분석이 얕다"**
+```
+[문제] DuckDuckGo 검색 결과의 스니펫은 200자 내외.
+       가격, 스펙, 전략 정보를 추출하기 부족
+
+[해결] Jina Reader API 통합:
+       검색 결과 URL → 페이지 본문 전체(최대 4,000자) 추출
+       네비게이션/광고 제거 필터링 후 분석에 활용
+       → Intelligence Node의 가격/스펙 분석 품질 대폭 향상
+```
+
+**고민 3: "7단계를 다 만들면 비용이 너무 높다"**
+```
+[해결] GPT-4o-mini 선택:
+       gpt-4o 대비 약 1/15 비용으로 분석당 $0.10~0.25 수준 유지
+       Structured Output으로 불필요한 재시도 최소화
+       Phase 1은 가벼운 메타데이터만, Phase 2에서만 심층 분석 집중
+```
+
+**고민 4: "90초 대기 중 사용자가 이탈한다"**
+```
+[해결] SSE 실시간 스트리밍:
+       각 노드 시작/검색중/완료 이벤트를 즉시 프론트엔드에 전달
+       "SKT 클라우드 — 재무 현황 매출 영업이익..." 같은 구체적 진행 메시지 표시
+       → 사용자가 "지금 무언가 열심히 분석 중"임을 인지 가능
+```
+
+---
+
+### 4-2. 한계와 비즈니스적 해석
+
+**한계 1: 실시간 데이터 한계**
+```
+LLM의 학습 데이터 컷오프 존재.
+Jina Reader로 최신 웹 데이터를 보완하지만,
+비공개 자료(내부 가격표, IR 자료, 영업 정보)는 수집 불가.
+
+→ 비즈니스 해석:
+   이 시스템은 "공개 인터넷에서 수집 가능한 범위"의 1차 조사를 대체.
+   이후 인간 전문가의 현장 검증(전화 미팅, 영업 정보 등)과 결합 시 최대 효과.
+```
+
+**한계 2: 분야별 전문성의 한계**
+```
+GPT-4o-mini는 범용 모델.
+반도체, 바이오, 법률 등 고도로 전문화된 분야에서는
+용어 해석의 오류 가능성 존재.
+
+→ 비즈니스 해석:
+   분야 전문가(도메인 전문가)의 키워드 힌트를 제품 설명에 포함할수록
+   분석 품질이 올라가는 "반자율형" 구조로 활용.
+```
+
+**한계 3: 가격 데이터 수집 한계**
+```
+B2B 기업 대부분이 가격을 공개하지 않음.
+"비공개 — 협상 기반"으로 표기되는 경우가 많음.
+
+→ 비즈니스 해석:
+   공개 가격이 있는 기업(클라우드, SaaS)은 정확도 높음.
+   가격 미공개 기업은 "시장 평균 추정"으로 포지셔닝 방향 제시.
+   이는 가격 전략 수립의 인풋으로 활용.
+```
+
+### 4-3. 확장 방향 (비즈니스 로드맵)
+
+```
+현재 (v2.0)
+├─ 7단계 자율형 파이프라인
+├─ 실시간 SSE 스트리밍
+├─ 5종 PDF 보고서 내보내기
+├─ 기업별 심층 분석 / 비교 분석
+└─ 3종 원페이지 목적별 보고서
+
+단기 확장 (v2.1)
+├─ 사용자 유형별 보고서 커스터마이징 (컨설턴트 / VC / 전략기획)
+├─ 분석 히스토리 저장 및 재분석 비교
+└─ 경쟁사 변동 알림 (주기적 재분석 + 차이점 하이라이트)
+
+중기 확장 (v3.0)
+├─ RAG 기반 내부 문서 통합 (회사 내부 보고서 + 웹 데이터 결합)
+├─ Slack / Teams 연동 (보고서 자동 발송)
+└─ 다국어 지원 (영문 / 일문 보고서 출력)
+```
+
+---
+
+## 5. 시스템 구성 요약
+
+### 기술 스택
+
+| 영역 | 기술 |
+|------|------|
+| LLM | OpenAI GPT-4o-mini |
+| 에이전트 프레임워크 | LangGraph 1.1.3 (StateGraph) |
+| LLM 오케스트레이션 | LangChain 1.2.13 + with_structured_output |
+| 웹 검색 | DuckDuckGo Search (asyncio.to_thread) |
+| 딥 스크래핑 | Jina Reader API (httpx 비동기) |
+| 백엔드 API | FastAPI 0.135.2 + uvicorn 0.42.0 |
+| 실시간 스트리밍 | SSE (sse-starlette 3.3.3) |
+| 문서 파싱 | PyMuPDF (PDF), python-docx (DOCX) |
+| 프론트엔드 | Next.js 15 + React 19 + TypeScript |
+| 스타일 | Tailwind CSS + lucide-react |
+| PDF 생성 | html2canvas 1.4.1 + jsPDF 4.2.1 |
+
+### 프로젝트 구조
 
 ```
 KT_Agent260327/
 ├── backend/
-│   ├── main.py                     FastAPI 앱 — API 엔드포인트 5종
-│   ├── schemas.py                  Pydantic 구조화 출력 스키마 (16개 필드 ReporterOutput 등)
+│   ├── main.py                     FastAPI 앱 — 엔드포인트 5종
+│   ├── schemas.py                  Pydantic 구조화 출력 스키마
 │   ├── graph/
-│   │   ├── state.py                메인 파이프라인 AgentState (TypedDict)
+│   │   ├── state.py                AgentState TypedDict
 │   │   ├── nodes.py                7개 에이전트 노드 (async + StreamWriter)
 │   │   ├── edges.py                route_on_error() 조건부 라우팅
-│   │   ├── builder.py              메인 StateGraph 조립 및 컴파일
-│   │   ├── deep_dive_state.py      심층 분석 파이프라인 상태
-│   │   ├── deep_dive_nodes.py      심층 분석 노드 함수
+│   │   ├── builder.py              메인 StateGraph 조립
+│   │   ├── deep_dive_nodes.py      심층 분석 노드
 │   │   └── deep_dive_builder.py    심층 분석 StateGraph
 │   └── tools/
-│       └── search.py               DuckDuckGo 비동기 검색 래퍼
+│       └── search.py               DuckDuckGo 비동기 래퍼
 │
 ├── frontend/
 │   ├── app/
-│   │   ├── page.tsx                메인 페이지 (AppState 상태 기계 + SSE 소비)
-│   │   └── deep-dive/
-│   │       └── page.tsx            심층 분석 독립 탭 (localStorage 파라미터 수신)
+│   │   ├── page.tsx                메인 페이지 (AppState 상태 기계)
+│   │   └── deep-dive/page.tsx      심층 분석 독립 탭
 │   ├── components/
-│   │   ├── InputForm.tsx           텍스트 입력 + PDF/DOCX 파일 업로드
-│   │   ├── AgentProgress.tsx       7단계 수직 스테퍼 (pending/active/complete/error)
-│   │   ├── ReportView.tsx          최종 보고서 대시보드
-│   │   ├── PdfExportButtons.tsx    5종 PDF 내보내기 (html2canvas + jsPDF)
-│   │   └── SkeletonLoader.tsx      로딩 스켈레톤 UI
-│   ├── lib/
-│   │   └── streamParser.ts         SSE 청크 분할 버퍼 파서
-│   └── types/
-│       └── analysis.ts             TypeScript 인터페이스 (AnalysisResult 외 20개 타입)
+│   │   ├── ReportView.tsx          보고서 대시보드
+│   │   ├── PdfExportButtons.tsx    5종 PDF 내보내기
+│   │   ├── AgentProgress.tsx       7단계 수직 스테퍼
+│   │   └── InputForm.tsx           입력 폼 + 파일 업로드
+│   ├── lib/streamParser.ts         SSE 청크 버퍼 파서
+│   └── types/analysis.ts           TypeScript 인터페이스 전체
 │
 ├── run_backend.sh
 ├── run_frontend.sh
-├── requirements.txt
-└── .env
+└── requirements.txt
 ```
+
+### API 엔드포인트
+
+| 메서드 | 경로 | 스트리밍 | 설명 |
+|--------|------|----------|------|
+| `POST` | `/analyze` | SSE | 7단계 메인 분석 파이프라인 |
+| `POST` | `/upload` | — | PDF/DOCX → 텍스트 추출 |
+| `POST` | `/deep-dive` | SSE | 기업 단일/비교 심층 분석 |
+| `POST` | `/one-page-report` | — | 목적별 원페이지 보고서 JSON |
+| `GET`  | `/health` | — | 서버 헬스 체크 |
+
+### SSE 이벤트 명세
+
+| event | data 구조 | 설명 |
+|-------|----------|------|
+| `progress` | `{type, step, node, message}` | 에이전트 단계 진행 |
+| `complete` | `AnalysisResult` 전체 JSON | 분석 완료 최종 결과 |
+| `terminal` | `{type, fallback_message?, error?}` | 조기 종료 |
+
+`progress.type`: `stage_start` / `stage_complete` / `searching` / `fallback` / `error`
+
+### 분석 성능
+
+| 항목 | 수치 |
+|------|------|
+| 총 분석 소요 시간 | 45~90초 |
+| 분석당 LLM 비용 | 약 $0.10~0.25 (GPT-4o-mini 기준) |
+| 경쟁사 탐색 수 | Phase 1: 5개 이상, Phase 2: 2~3개 심층 |
+| 검색 결과 수집 | 평균 20~30건 |
+| 딥 스크래핑 페이지 | 최대 5페이지 × 4,000자 |
+| PDF 보고서 종류 | 5종 (A4 1페이지) |
+| 원페이지 보고서 종류 | 3종 (GTM / 입찰 / 투자) |
 
 ---
 
-## 실행 방법
+## 6. 실행 방법
 
-### 1. 환경 변수 설정
+### 환경 변수 설정
 
 ```bash
 # .env
@@ -100,7 +575,7 @@ MODEL_NAME=gpt-4o-mini
 NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 ```
 
-### 2. 백엔드 실행
+### 백엔드 실행
 
 ```bash
 bash run_backend.sh
@@ -108,285 +583,18 @@ bash run_backend.sh
 # API 문서: http://localhost:8000/docs
 ```
 
-### 3. 프론트엔드 실행
+### 프론트엔드 실행
 
 ```bash
 bash run_frontend.sh
-# → http://localhost:3000  (최초 실행 시 npm install 자동 수행)
+# → http://localhost:3000
 ```
 
 ---
 
-## API 엔드포인트
+## 7. 데모 시나리오
 
-| 메서드 | 경로 | 스트리밍 | 설명 |
-|--------|------|----------|------|
-| `POST` | `/analyze` | SSE | 7단계 메인 분석 파이프라인 |
-| `POST` | `/upload` | — | PDF/DOCX 파일 → 텍스트 추출 |
-| `POST` | `/deep-dive` | SSE | 기업 단일/비교 심층 분석 |
-| `POST` | `/one-page-report` | — | 목적별 원페이지 보고서 (JSON) |
-| `GET`  | `/health` | — | 서버 헬스 체크 |
-
----
-
-## 에이전트 파이프라인 (7단계)
-
-```
-사용자 입력 (텍스트 또는 파일)
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  STEP 1: Market Scan Node                                   │
-│  - GPT-4o-mini + Structured Output                         │
-│  - BM 유형 분류: SaaS/IaaS vs Hardware OEM vs SI           │
-│  - 동일 카테고리 경쟁사 5개 이상 발굴, relevance_score 산정  │
-│  - is_valid_input = False → terminal 이벤트 후 조기 종료    │
-└──────────────────────── route_on_error() ───────────────────┘
-         │  is_valid_input = True
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  STEP 2: Competitor Selection Node                          │
-│  - Phase 2 심층 프로파일 생성 (2~3개사 선정)                │
-│  - Jina Reader API → 경쟁사 웹사이트 본문 전체 추출         │
-│  - 선정 이유 (selection_rationale) 명시 강제                │
-└─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  STEP 3: Planner Node                                       │
-│  - 심층 분석용 검색 키워드 4~6개 도출                        │
-│  - 국내 타겟 키워드 50% 이상 의무 (글로벌 편향 방지)         │
-└─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  STEP 4: Web Researcher Node                                │
-│  - Phase A: DuckDuckGo 키워드별 검색 (키워드당 3건)         │
-│  - Phase B: 국내 필수 검색 강제 실행                         │
-│    ("SKT KT 삼성SDS LG CNS 네이버클라우드" 등 고정 쿼리)    │
-│  - Phase C: Jina Reader 상위 5 URL 본문 전체 추출           │
-│  - 검색 실패 시 Mock 데이터 fallback (파이프라인 중단 없음)  │
-└─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  STEP 5: Graph Structuring Node                             │
-│  - 수집 데이터 → 지식 그래프 (노드 6~12개, 엣지 5개 이상)   │
-│  - 노드 타입: company / product / trend / threat             │
-│  - 엣지 타입: competes_with / leverages / threatens 등      │
-│  - method="function_calling" (중첩 스키마 직렬화 안정성)    │
-└─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  STEP 6: Reporter Node                                      │
-│  - TAM / SAM / SOM 수치 기반 추정 (근거 없으면 "(추정)" 강제) │
-│  - 진입 장벽 / 차별화 포인트 / GTM 채널 / 리스크 시나리오   │
-│  - ReporterOutput Pydantic 스키마 16개 필드 강제 생성        │
-└─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  STEP 7: Intelligence Agent Node                            │
-│  - 경영진 3줄 즉시 실행 전략 요약                            │
-│  - 가격 인텔리전스 (시장 평균 대비 경쟁사 포지셔닝)          │
-│  - 스펙 비교표 (advantage_holder 명시)                       │
-│  - 절대적 강점 / 즉시 보완 필요 약점                         │
-└─────────────────────────────────────────────────────────────┘
-         │
-         ▼
-SSE complete 이벤트 → 프론트엔드 대시보드 렌더링
-```
-
----
-
-## 보고서 대시보드 구성
-
-| 순서 | 섹션 | 주요 내용 |
-|------|------|----------|
-| 0 | 목적별 PDF 내보내기 | 5종 버튼 — 클릭 즉시 PDF 다운로드 |
-| 1 | Executive Insight Panel | 즉시 실행 전략 3줄 / 절대 강점 / 치명적 약점 |
-| 2 | Executive Summary | 전체 분석 내러티브 요약 |
-| 3 | 시장 포지셔닝 분석 | 시장 개요 + 포지셔닝 |
-| 4 | 가격 인텔리전스 | 경쟁사별 가격 / 모델 / 시장 평균 대비 비교 |
-| 5 | Phase 1 Market Scan | 5개 이상 경쟁사 relevance_score 테이블 (체크박스 선택) |
-| 6 | 스펙 비교표 | 항목별 당사 vs 경쟁사 (초록=우위 / 빨강=열위) |
-| 7 | Phase 2 경쟁사 프로필 | 심층 강점/약점 카드 |
-| 8 | 시장 구조 분석 | TAM/SAM/SOM / 성숙도 / 진입 장벽 / 차별화 / GTM |
-| 9 | Graph RAG 인사이트 | 지식 그래프 노드/엣지 + 도출 인사이트 |
-| 10 | 전략적 권고사항 | 실행 가능한 전략 제언 |
-| 11 | 참고 출처 | 수집 URL / 스니펫 최대 12건 |
-
----
-
-## PDF 내보내기 (5종)
-
-클릭 즉시 html2canvas로 hidden 렌더 div 캡처 → jsPDF A4 변환 → 다운로드. API 호출 없음.
-
-| 버튼 | 용도 | 포함 내용 |
-|------|------|----------|
-| 시장 진입 브리핑 | 내부 경영진 보고 | 경쟁사 프로필, 시장 기회, 전략 권고 |
-| 경쟁 전략 요약 | 제안/입찰 | 스펙 비교, 차별화, GTM 채널 |
-| 투자자용 시장 요약 | VC·투자자 | TAM/SAM/SOM, 성숙도, 진입 장벽 |
-| 파트너십 제안서 | 파트너사 첨부 | 절대 강점, 협업 시너지 |
-| 신사업 검토 보고 | 전략기획·임원 | 리스크 시나리오, 첫 고객 힌트, 진입 경로 |
-
----
-
-## 기업 심층 분석 (새 탭)
-
-Phase 1 테이블에서 경쟁사를 체크박스로 선택 → "심층 분석" 버튼 → 새 브라우저 탭(`/deep-dive`)에서 SSE 스트리밍으로 분석.
-
-- **단일 기업**: 비즈니스 모델, 핵심 기술, 주요 제품, SWOT, 최근 동향, 고객 Pain Point
-- **비교 분석**: 핵심 서비스 / 타겟 고객 / 가격 모델 / 시장 포지션 비교표
-
-파라미터는 `localStorage`로 전달 (URL 길이 제한 회피).
-
----
-
-## 핵심 기술 설계
-
-### LangGraph 스트리밍
-
-`stream_mode=["updates", "custom"]` 조합으로 실시간 진행 이벤트와 최종 상태를 동시에 수신합니다.
-
-```python
-async for stream_mode, chunk in graph.astream(initial, stream_mode=["updates", "custom"]):
-    if stream_mode == "custom":
-        # writer()로 방출한 실시간 진행 이벤트 (stage_start / searching / stage_complete)
-        yield {"event": "progress", "data": json.dumps(chunk)}
-    elif stream_mode == "updates":
-        # 노드 완료 시 상태 델타 → accumulated에 병합 → complete 감지
-        accumulated.update(chunk[node_name])
-```
-
-### Structured Output — Hallucination 방지 4단계
-
-```
-1. Pydantic 스키마 강제
-   LLM이 자유 텍스트가 아닌 스키마 필드를 채우도록 강제
-   → 형식 이탈 불가, 필드 누락 방지
-
-2. "(추정)" 표기 의무화
-   TAM/가격/점유율 등 수치는 근거 없을 경우 "(추정)" 명시를 프롬프트에서 강제
-   → 사실인 것처럼 수치를 꾸미는 것 방지
-
-3. 실시간 웹 데이터 기반 분석 (RAG)
-   DuckDuckGo 검색 + Jina Reader 본문 추출 → 최신 데이터를 컨텍스트로 활용
-   → "수집된 데이터에서 확인된 사실만 사용" 지침 명시
-
-4. BM 카테고리 필터링
-   market_scan_node에서 BM 불일치 기업 배제
-   → "Nvidia 같은 하드웨어 OEM이 SaaS 경쟁사로 나오는" 오류 방지
-```
-
-```python
-# 중첩 Pydantic 모델은 function_calling으로 직렬화 안정성 확보
-chain = prompt | llm.with_structured_output(GraphOutput, method="function_calling")
-
-# 단순 스키마는 기본 json_schema 사용
-chain = prompt | llm.with_structured_output(ReporterOutput)
-```
-
-### SSE 청크 파서
-
-`fetch()` ReadableStream은 SSE 이벤트 경계를 보장하지 않습니다. 버퍼링으로 분할 청크를 처리합니다.
-
-```typescript
-export function createSSEParser(onEvent: (event: string, data: string) => void) {
-    let buffer = "";
-    return function parse(chunk: string) {
-        buffer += chunk;
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? ""; // 불완전 마지막 라인 보존
-        // 완전한 라인만 event:/data: 파싱
-    };
-}
-```
-
-### 노드별 프롬프트 전략
-
-| 노드 | 핵심 지침 | 제약 |
-|------|----------|------|
-| market_scan | BM 분류 후 동일 카테고리만 포함 | 하드웨어 OEM 배제 규칙 명시 |
-| competitor_select | 타겟 고객 겹침 기준 선정 | selection_rationale 설명 강제 |
-| planner | 국내 키워드 50% 이상 의무 | 글로벌 편향 방지 |
-| researcher | Phase B 국내 필수 쿼리 고정 실행 | SKT/KT/삼성SDS/네이버클라우드 포함 |
-| reporter | TAM/SAM/SOM 수치 추정 의무 | 공개 정보 없으면 "(추정)" 강제 |
-| intelligence | "지금 당장 취할 액션" 3줄 | 일반론 금지, 이 제품·시장 특화만 허용 |
-
----
-
-## SSE 이벤트 명세
-
-### `/analyze` 및 `/deep-dive` 스트림
-
-| event | data 구조 | 설명 |
-|-------|----------|------|
-| `progress` | `{type, step, node, message}` | 에이전트 단계 진행 |
-| `complete` | `AnalysisResult` 전체 JSON | 분석 완료 최종 결과 |
-| `terminal` | `{type, fallback_message?, error?}` | 조기 종료 (입력 불충분 또는 오류) |
-
-`progress.type` 값: `stage_start` / `stage_complete` / `searching` / `fallback` / `error`
-
----
-
-## 분석 성능
-
-| 항목 | 수치 |
-|------|------|
-| 총 분석 소요 시간 | 45~90초 |
-| LLM 비용 (1회) | 약 $0.10~0.25 (GPT-4o-mini 기준) |
-| Phase 1 경쟁사 탐색 | 5개 이상 자동 발굴 |
-| Phase 2 심층 분석 | 2~3개사 선택 |
-| 검색 결과 수집 | 평균 20~30건 |
-| Jina 딥 스크래핑 | 최대 5 URL × 4,000자/페이지 |
-| PDF 종류 | 5종 (A4 1페이지) |
-
----
-
-## Fallback 처리
-
-입력 내용이 불충분하면 LLM 추측 없이 재입력 안내 메시지를 반환하고 조기 종료합니다.
-
-**유효 조건**: 제품 카테고리, 타겟 고객, 핵심 기능 중 **최소 2가지** 명확히 포함
-
-**무효 예시**: "AI", "챗봇 만들어줘", 10단어 미만 모호한 입력
-
-```
-market_scan_node
-    │  is_valid_input = False
-    ▼
-route_on_error() → END
-    │
-    ▼
-SSE terminal 이벤트 → 프론트엔드 재입력 안내 화면
-```
-
----
-
-## 환경 변수
-
-### 백엔드 (.env)
-
-| 변수 | 설명 | 필수 |
-|------|------|------|
-| `OPENAI_API_KEY` | OpenAI API 키 | 필수 |
-| `MODEL_NAME` | GPT 모델명 (기본: `gpt-4o-mini`) | 선택 |
-| `LANGCHAIN_TRACING_V2` | LangSmith 트레이싱 활성화 | 선택 |
-| `LANGCHAIN_API_KEY` | LangSmith API 키 | 선택 |
-| `LANGCHAIN_PROJECT` | LangSmith 프로젝트명 | 선택 |
-
-### 프론트엔드 (frontend/.env.local)
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `NEXT_PUBLIC_BACKEND_URL` | FastAPI 서버 URL | `http://localhost:8000` |
-
----
-
-## 데모 입력 예시
-
+**입력 예시**
 ```
 GPT-4o급 성능의 국산 언어모델을 기업 고객에게 API 형태로 제공하는 LLM APIaaS 서비스.
 타겟은 국내 금융권, 공공기관, 대기업 IT 부서.
@@ -403,34 +611,22 @@ on-premise 배포 및 데이터 보안 SLA 제공.
    조달청 나라장터 등록 및 GS인증을 최우선 과제로 설정
 3) AWS/Azure 대비 데이터 주권 이슈를 레버리지하는 국산 AI 마케팅 전략 즉시 실행
 
-[Phase 1] 경쟁사 자동 도출
+[Phase 1] 경쟁사 5개 이상 자동 도출
   - 네이버클라우드 (HyperCLOVA X): 직접 경쟁, 위협도 9/10
   - SKT AI (에이닷/A.X): 직접 경쟁, 위협도 8/10
   - KT AI: 직접 경쟁, 위협도 7/10
   - 삼성SDS (Brity): 직접 경쟁, 위협도 7/10
+  - LG CNS (EXAONE): 직접 경쟁, 위협도 6/10
   - OpenAI API: 간접 경쟁, 위협도 8/10
-  ...
+
+[PDF 내보내기]
+  → 투자자용 시장 요약 버튼 클릭
+  → A4 1페이지 TAM/SAM/SOM + 리스크 + 진입전략 즉시 다운로드
 ```
 
 ---
 
-## 확장 로드맵
+---
 
-```
-현재 (v2.0)
-├─ 7단계 자율형 파이프라인
-├─ 실시간 SSE 스트리밍
-├─ 5종 PDF 보고서 즉시 다운로드
-├─ 기업별 심층 분석 / 비교 분석 (새 탭)
-└─ 3종 원페이지 목적별 보고서 (API)
-
-단기 (v2.1)
-├─ 분석 히스토리 저장 및 재분석 비교
-├─ 사용자 유형별 보고서 커스터마이징 (컨설턴트 / VC / 전략기획)
-└─ 경쟁사 변동 알림 (주기적 재분석 + 차이점 하이라이트)
-
-중기 (v3.0)
-├─ RAG 기반 내부 문서 통합 (사내 보고서 + 웹 데이터 결합)
-├─ Slack / Teams 연동 (보고서 자동 발송)
-└─ 다국어 지원 (영문 / 일문 보고서 출력)
-```
+*Market Intelligence Agent v2.0*
+*분석 결과는 공개 웹 데이터 기반 AI 생성 자료이며, 중요 의사결정 시 원문 출처를 직접 확인하시기 바랍니다.*
