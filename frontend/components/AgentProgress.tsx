@@ -1,6 +1,9 @@
 "use client";
 
-import { AlertCircle, CheckCircle, Circle, Loader2 } from "lucide-react";
+import AlertCircle  from "lucide-react/dist/esm/icons/alert-circle";
+import CheckCircle  from "lucide-react/dist/esm/icons/check-circle";
+import Circle       from "lucide-react/dist/esm/icons/circle";
+import Loader2      from "lucide-react/dist/esm/icons/loader-2";
 import type { AgentStep } from "@/types/analysis";
 
 interface AgentProgressProps {

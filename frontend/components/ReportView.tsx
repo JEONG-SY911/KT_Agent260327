@@ -1,32 +1,32 @@
 "use client";
 
-import {
-  AlertTriangle,
-  ArrowRight,
-  BarChart2,
-  BookOpen,
-  Building2,
-  ExternalLink,
-  Globe,
-  Network,
-  Shield,
-  TrendingUp,
-} from "lucide-react";
-import type { AnalysisResult, GraphNode, Phase1CompetitorItem } from "@/types/analysis";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle";
+import ArrowRight    from "lucide-react/dist/esm/icons/arrow-right";
+import BookOpen      from "lucide-react/dist/esm/icons/book-open";
+import Building2     from "lucide-react/dist/esm/icons/building-2";
+import ExternalLink  from "lucide-react/dist/esm/icons/external-link";
+import Lightbulb     from "lucide-react/dist/esm/icons/lightbulb";
+import MapPin        from "lucide-react/dist/esm/icons/map-pin";
+import ShieldAlert   from "lucide-react/dist/esm/icons/shield-alert";
+import Target        from "lucide-react/dist/esm/icons/target";
+import TrendingUp    from "lucide-react/dist/esm/icons/trending-up";
+import Zap           from "lucide-react/dist/esm/icons/zap";
+import type { AnalysisResult, MarketMaturity, Phase1CompetitorItem } from "@/types/analysis";
+import { PdfExportButtons } from "@/components/PdfExportButtons";
 
 interface ReportViewProps {
   result: AnalysisResult;
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Small helper components
+// Helpers
 // ──────────────────────────────────────────────────────────────────────
 
 function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
     <div className="flex items-center gap-2 mb-4">
       <div className="text-slate-500">{icon}</div>
-      <h2 className="section-title">{title}</h2>
+      <h2 className="text-sm font-semibold text-slate-800 uppercase tracking-wide">{title}</h2>
     </div>
   );
 }
@@ -36,26 +36,26 @@ function BulletList({
   variant = "default",
 }: {
   items: string[];
-  variant?: "default" | "opportunity" | "threat" | "recommendation";
+  variant?: "default" | "barrier" | "diff" | "risk" | "action";
 }) {
+  const dot: Record<string, string> = {
+    default: "bg-slate-400",
+    barrier: "bg-amber-500",
+    diff: "bg-emerald-500",
+    risk: "bg-red-500",
+    action: "",
+  };
+
   return (
-    <ul className="space-y-2.5">
+    <ul className="space-y-2">
       {items.map((item, i) => (
         <li key={i} className="flex items-start gap-2.5">
-          {variant === "recommendation" ? (
+          {variant === "action" ? (
             <span className="flex-shrink-0 flex items-center justify-center w-5 h-5 mt-0.5 rounded-full bg-brand-600 text-white text-xs font-bold">
               {i + 1}
             </span>
           ) : (
-            <span
-              className={`flex-shrink-0 w-1.5 h-1.5 rounded-full mt-2 ${
-                variant === "opportunity"
-                  ? "bg-emerald-500"
-                  : variant === "threat"
-                  ? "bg-red-500"
-                  : "bg-slate-400"
-              }`}
-            />
+            <span className={`flex-shrink-0 w-1.5 h-1.5 rounded-full mt-2 ${dot[variant]}`} />
           )}
           <span className="text-sm text-slate-700 leading-relaxed">{item}</span>
         </li>
@@ -64,42 +64,33 @@ function BulletList({
   );
 }
 
-function NodeTypeBadge({ type }: { type: GraphNode["type"] }) {
-  const classes: Record<GraphNode["type"], string> = {
-    company: "badge-company",
-    product: "badge-product",
-    trend:   "badge-trend",
-    threat:  "badge-threat",
+function MaturityBadge({ maturity }: { maturity: MarketMaturity }) {
+  const map: Record<MarketMaturity, { color: string; desc: string }> = {
+    도입기: { color: "bg-violet-100 text-violet-700 border-violet-200", desc: "초기 시장 — 선점 기회" },
+    성장기: { color: "bg-emerald-100 text-emerald-700 border-emerald-200", desc: "빠른 성장 — 진입 적기" },
+    성숙기: { color: "bg-amber-100 text-amber-700 border-amber-200",   desc: "성숙 시장 — 차별화 필수" },
+    쇠퇴기: { color: "bg-red-100 text-red-700 border-red-200",         desc: "쇠퇴 — 진입 신중 검토" },
   };
-  const labels: Record<GraphNode["type"], string> = {
-    company: "기업",
-    product: "제품",
-    trend:   "트렌드",
-    threat:  "위협",
-  };
-  return <span className={classes[type]}>{labels[type]}</span>;
+  const { color, desc } = map[maturity] ?? map["성장기"];
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold border ${color}`}>
+        {maturity}
+      </span>
+      <span className="text-xs text-slate-500">{desc}</span>
+    </div>
+  );
 }
 
-// Threat level bar: maps 1-10 score to 5 filled segments
 function ThreatBar({ score }: { score: number }) {
-  const filled  = Math.round(score / 2);   // 0-5
-  const color   =
-    score >= 8 ? "bg-red-500"
-    : score >= 5 ? "bg-amber-500"
-    : "bg-slate-400";
-  const textColor =
-    score >= 8 ? "text-red-600"
-    : score >= 5 ? "text-amber-600"
-    : "text-slate-500";
-
+  const filled = Math.round(score / 2);
+  const color = score >= 8 ? "bg-red-500" : score >= 5 ? "bg-amber-500" : "bg-slate-400";
+  const textColor = score >= 8 ? "text-red-600" : score >= 5 ? "text-amber-600" : "text-slate-500";
   return (
     <div className="flex items-center gap-1.5">
       <div className="flex gap-0.5">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div
-            key={i}
-            className={`w-1.5 h-3.5 rounded-sm ${i < filled ? color : "bg-slate-200"}`}
-          />
+          <div key={i} className={`w-1.5 h-3.5 rounded-sm ${i < filled ? color : "bg-slate-200"}`} />
         ))}
       </div>
       <span className={`text-xs font-medium tabular-nums ${textColor}`}>{score}/10</span>
@@ -109,386 +100,217 @@ function ThreatBar({ score }: { score: number }) {
 
 function CompetitorTypeBadge({ type }: { type: Phase1CompetitorItem["type"] }) {
   const map: Record<Phase1CompetitorItem["type"], { label: string; className: string }> = {
-    direct:   { label: "직접 경쟁",   className: "bg-blue-50 text-blue-700 border-blue-200" },
-    indirect: { label: "간접/대체재", className: "bg-slate-100 text-slate-600 border-slate-200" },
-    adjacent: { label: "인접 시장",   className: "bg-violet-50 text-violet-700 border-violet-200" },
+    direct:   { label: "직접",   className: "bg-blue-50 text-blue-700 border-blue-200" },
+    indirect: { label: "간접",   className: "bg-slate-100 text-slate-600 border-slate-200" },
+    adjacent: { label: "인접",   className: "bg-violet-50 text-violet-700 border-violet-200" },
   };
   const { label, className } = map[type] ?? map.indirect;
   return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${className}`}>
+    <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium border ${className}`}>
       {label}
     </span>
   );
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Main report component
+// Main
 // ──────────────────────────────────────────────────────────────────────
 
 export function ReportView({ result }: ReportViewProps) {
-  const {
-    final_report,
-    phase1_competitors,
-    competitors,
-    knowledge_graph,
-    graph_insights,
-    raw_research,
-    market_overview,
-  } = result;
-
-  const directCompetitors   = competitors.filter((c) => c.type === "direct");
-  const indirectCompetitors = competitors.filter((c) => c.type === "indirect");
+  const { final_report, phase1_competitors, competitors, raw_research, market_overview } = result;
 
   const references = Array.from(
     new Map(raw_research.map((r) => [r.url, r])).values()
-  ).slice(0, 12);
-
-  const nodesByType = knowledge_graph.nodes?.reduce<
-    Record<string, typeof knowledge_graph.nodes>
-  >((acc, node) => {
-    acc[node.type] = acc[node.type] || [];
-    acc[node.type].push(node);
-    return acc;
-  }, {}) ?? {};
+  ).slice(0, 10);
 
   return (
-    <div className="space-y-6">
-      {/* ── 1. Executive Summary ──────────────────────────────────── */}
-      <div className="card p-6 border-l-4 border-brand-600">
-        <SectionHeader icon={<BarChart2 className="h-4 w-4" />} title="Executive Summary" />
-        <p className="text-sm text-slate-700 leading-relaxed">
-          {final_report.executive_summary}
-        </p>
-        {final_report.competitive_analysis_summary && (
-          <p className="mt-3 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
-            {final_report.competitive_analysis_summary}
-          </p>
-        )}
-      </div>
+    <div className="space-y-5">
 
-      {/* ── 2. Market Overview + Positioning ─────────────────────── */}
-      <div className="card p-6">
-        <SectionHeader icon={<Globe className="h-4 w-4" />} title="시장 포지셔닝 분석" />
+      {/* ── PDF 내보내기 버튼 ────────────────────────────────────────── */}
+      <PdfExportButtons result={result} />
+
+      {/* ── 1. 요약 ─────────────────────────────────────────────────── */}
+      <div className="card p-5 border-l-4 border-brand-600">
+        <p className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">요약</p>
+        <p className="text-sm text-slate-800 leading-relaxed">{final_report.executive_summary}</p>
         {market_overview && (
-          <p className="text-sm text-slate-500 leading-relaxed mb-3 pb-3 border-b border-slate-100">
+          <p className="mt-2 text-xs text-slate-500 leading-relaxed border-t border-slate-100 pt-2">
             {market_overview}
           </p>
         )}
-        <p className="text-sm text-slate-700 leading-relaxed">
-          {final_report.positioning_summary || result.market_positioning}
-        </p>
       </div>
 
-      {/* ── 3. Phase 1: Market Scan Table ────────────────────────── */}
+      {/* ── 2. 시장 규모 ────────────────────────────────────────────── */}
+      <div className="card p-5">
+        <SectionHeader icon={<TrendingUp className="h-4 w-4" />} title="시장 규모" />
+        <div className="mb-4">
+          <MaturityBadge maturity={final_report.market_maturity} />
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "TAM", desc: "전체 시장", value: final_report.market_size_tam, color: "border-slate-300" },
+            { label: "SAM", desc: "유효 시장", value: final_report.market_size_sam, color: "border-brand-400" },
+            { label: "SOM", desc: "획득 가능", value: final_report.market_size_som, color: "border-emerald-400" },
+          ].map(({ label, desc, value, color }) => (
+            <div key={label} className={`rounded-lg border-2 ${color} p-3`}>
+              <div className="flex items-baseline gap-1 mb-1">
+                <span className="text-sm font-bold text-slate-800">{label}</span>
+                <span className="text-xs text-slate-400">{desc}</span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">{value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 3. 경쟁 구도 ────────────────────────────────────────────── */}
       {phase1_competitors.length > 0 && (
-        <div className="card p-6">
+        <div className="card p-5">
           <SectionHeader
             icon={<Building2 className="h-4 w-4" />}
-            title={`전체 시장 경쟁사 스캔 — Phase 1 (${phase1_competitors.length}개)`}
+            title={`경쟁사 스캔 — ${phase1_competitors.length}개`}
           />
-          <p className="text-xs text-slate-400 mb-4">
-            시장 내 잠재적 경쟁사를 광범위하게 나열한 목록입니다. 위협도(relevance_score) 기준 내림차순 정렬.
-          </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-slate-200 text-left">
-                  <th className="py-2 pr-3 font-semibold text-slate-500 w-6">#</th>
-                  <th className="py-2 pr-3 font-semibold text-slate-500">기업명</th>
-                  <th className="py-2 pr-3 font-semibold text-slate-500">유형</th>
-                  <th className="py-2 pr-3 font-semibold text-slate-500 min-w-[180px]">설명</th>
-                  <th className="py-2 pr-3 font-semibold text-slate-500">예상 점유율</th>
-                  <th className="py-2 pr-3 font-semibold text-slate-500">투자/설립</th>
-                  <th className="py-2 font-semibold text-slate-500">위협도</th>
+                  <th className="py-2 pr-3 font-medium text-slate-500">기업명</th>
+                  <th className="py-2 pr-3 font-medium text-slate-500">유형</th>
+                  <th className="py-2 pr-3 font-medium text-slate-500 min-w-[160px]">설명</th>
+                  <th className="py-2 pr-3 font-medium text-slate-500">점유율</th>
+                  <th className="py-2 font-medium text-slate-500">위협도</th>
                 </tr>
               </thead>
               <tbody>
-                {phase1_competitors.map((c, i) => (
-                  <tr
-                    key={c.name}
-                    className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors"
-                  >
-                    <td className="py-2.5 pr-3 text-slate-400 font-mono">{i + 1}</td>
-                    <td className="py-2.5 pr-3">
+                {phase1_competitors.map((c) => (
+                  <tr key={c.name} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                    <td className="py-2 pr-3">
                       <div className="font-semibold text-slate-800">{c.name}</div>
                       {c.website && (
                         <a
                           href={c.website.startsWith("http") ? c.website : `https://${c.website}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-0.5 text-brand-600 hover:text-brand-700 mt-0.5"
+                          className="inline-flex items-center gap-0.5 text-brand-600 hover:text-brand-700"
                         >
                           <ExternalLink className="h-2.5 w-2.5" />
-                          <span className="text-xs">웹사이트</span>
+                          <span>사이트</span>
                         </a>
                       )}
                     </td>
-                    <td className="py-2.5 pr-3">
-                      <CompetitorTypeBadge type={c.type} />
-                    </td>
-                    <td className="py-2.5 pr-3 text-slate-600 leading-relaxed max-w-xs">
-                      {c.description}
-                    </td>
-                    <td className="py-2.5 pr-3 text-slate-600">
-                      {c.market_share_estimate || <span className="text-slate-400">—</span>}
-                    </td>
-                    <td className="py-2.5 pr-3 text-slate-600 whitespace-nowrap">
-                      <div>{c.funding_info || <span className="text-slate-400">—</span>}</div>
-                      {c.founded_year && (
-                        <div className="text-slate-400">{c.founded_year}년 설립</div>
-                      )}
-                    </td>
-                    <td className="py-2.5">
-                      <ThreatBar score={c.relevance_score} />
-                    </td>
+                    <td className="py-2 pr-3"><CompetitorTypeBadge type={c.type} /></td>
+                    <td className="py-2 pr-3 text-slate-600 max-w-xs">{c.description}</td>
+                    <td className="py-2 pr-3 text-slate-600">{c.market_share_estimate || "—"}</td>
+                    <td className="py-2"><ThreatBar score={c.relevance_score} /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          {/* Phase 2 핵심 경쟁사 */}
+          {competitors.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <p className="text-xs font-medium text-slate-500 mb-3">핵심 경쟁사 심층 분석 ({competitors.length}개)</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {competitors.map((c) => (
+                  <div key={c.name} className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-semibold text-slate-800">{c.name}</span>
+                      <CompetitorTypeBadge type={c.type as Phase1CompetitorItem["type"]} />
+                    </div>
+                    {c.strengths?.length > 0 && (
+                      <div className="mb-1.5">
+                        <p className="text-xs font-medium text-emerald-700 mb-1">강점</p>
+                        {c.strengths.map((s: string) => (
+                          <p key={s} className="text-xs text-slate-600 flex gap-1"><span className="text-emerald-500">+</span>{s}</p>
+                        ))}
+                      </div>
+                    )}
+                    {c.weaknesses?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-red-600 mb-1">약점 (기회)</p>
+                        {c.weaknesses.map((w: string) => (
+                          <p key={w} className="text-xs text-slate-600 flex gap-1"><span className="text-red-400">-</span>{w}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── 4. Phase 2: Deep Competitor Profiles ─────────────────── */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Building2 className="h-4 w-4 text-slate-500" />
-          <h2 className="section-title">
-            핵심 경쟁사 심층 분석 — Phase 2 ({competitors.length}개 선정)
-          </h2>
+      {/* ── 4. 진입 전략 3분할 ──────────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* 진입 장벽 */}
+        <div className="card p-5">
+          <SectionHeader icon={<ShieldAlert className="h-4 w-4 text-amber-500" />} title="진입 장벽" />
+          <BulletList items={final_report.entry_barriers} variant="barrier" />
         </div>
-        <p className="text-xs text-slate-400 mb-4">
-          Phase 1 목록에서 AI가 선정한 가장 위협적인 경쟁사에 대한 심층 프로필입니다.
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {directCompetitors.map((c) => (
-            <div key={c.name} className="card p-5">
-              <div className="flex items-start justify-between mb-1">
-                <h3 className="text-sm font-semibold text-slate-900">{c.name}</h3>
-                <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-medium flex-shrink-0 ml-2">
-                  직접 경쟁
-                </span>
-              </div>
-              {c.estimated_market_position && (
-                <p className="text-xs text-slate-500 mb-2 italic">{c.estimated_market_position}</p>
-              )}
-              <p className="text-xs text-slate-600 leading-relaxed mb-3">{c.description}</p>
-              {c.key_products.length > 0 && (
-                <div className="mb-3">
-                  <p className="text-xs font-medium text-slate-500 mb-1.5">핵심 제품/서비스</p>
-                  <div className="flex flex-wrap gap-1">
-                    {c.key_products.map((p) => (
-                      <span key={p} className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-xs">
-                        {p}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {c.strengths.length > 0 && (
-                <div className="mb-2">
-                  <p className="text-xs font-medium text-emerald-700 mb-1">강점</p>
-                  <ul className="space-y-0.5">
-                    {c.strengths.map((s) => (
-                      <li key={s} className="flex items-start gap-1.5">
-                        <span className="text-emerald-500 mt-1 flex-shrink-0">+</span>
-                        <span className="text-xs text-slate-600">{s}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {c.weaknesses.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-red-600 mb-1">약점 (차별화 기회)</p>
-                  <ul className="space-y-0.5">
-                    {c.weaknesses.map((w) => (
-                      <li key={w} className="flex items-start gap-1.5">
-                        <span className="text-red-400 mt-1 flex-shrink-0">-</span>
-                        <span className="text-xs text-slate-600">{w}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {c.website && (
-                <a
-                  href={c.website.startsWith("http") ? c.website : `https://${c.website}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 mt-3 text-xs text-brand-600 hover:text-brand-700"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  {c.website}
-                </a>
-              )}
+        {/* 차별화 포인트 */}
+        <div className="card p-5">
+          <SectionHeader icon={<Zap className="h-4 w-4 text-emerald-500" />} title="차별화 포인트" />
+          <BulletList items={final_report.differentiation_points} variant="diff" />
+        </div>
+        {/* GTM */}
+        <div className="card p-5">
+          <SectionHeader icon={<Target className="h-4 w-4 text-brand-600" />} title="Go-to-Market" />
+          <BulletList items={final_report.gtm_channels} variant="default" />
+          {final_report.first_customer_hint && (
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <p className="text-xs font-medium text-slate-500 mb-1">첫 고객 확보</p>
+              <p className="text-xs text-slate-600 leading-relaxed">{final_report.first_customer_hint}</p>
             </div>
-          ))}
-
-          {indirectCompetitors.map((c) => (
-            <div key={c.name} className="card p-5 border-dashed">
-              <div className="flex items-start justify-between mb-1">
-                <h3 className="text-sm font-semibold text-slate-900">{c.name}</h3>
-                <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-medium flex-shrink-0 ml-2">
-                  간접/대체재
-                </span>
-              </div>
-              {c.estimated_market_position && (
-                <p className="text-xs text-slate-500 mb-2 italic">{c.estimated_market_position}</p>
-              )}
-              <p className="text-xs text-slate-600 leading-relaxed mb-3">{c.description}</p>
-              {c.strengths.length > 0 && (
-                <div className="mb-2">
-                  <p className="text-xs font-medium text-emerald-700 mb-1">강점</p>
-                  <ul className="space-y-0.5">
-                    {c.strengths.map((s) => (
-                      <li key={s} className="flex items-start gap-1.5">
-                        <span className="text-emerald-500 mt-1 flex-shrink-0">+</span>
-                        <span className="text-xs text-slate-600">{s}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          ))}
+          )}
         </div>
       </div>
 
-      {/* ── 5. Opportunities & Threats ───────────────────────────── */}
+      {/* ── 5. 진입 경로 + 리스크 ───────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="card p-5">
-          <SectionHeader
-            icon={<TrendingUp className="h-4 w-4 text-emerald-600" />}
-            title="시장 기회 요소"
-          />
-          <BulletList items={final_report.market_opportunities} variant="opportunity" />
+          <SectionHeader icon={<MapPin className="h-4 w-4" />} title="권장 진입 경로" />
+          <p className="text-sm text-slate-700 leading-relaxed">{final_report.entry_route}</p>
         </div>
         <div className="card p-5">
-          <SectionHeader
-            icon={<AlertTriangle className="h-4 w-4 text-red-500" />}
-            title="위협 요소 및 리스크"
-          />
-          <BulletList items={final_report.threat_factors} variant="threat" />
+          <SectionHeader icon={<AlertTriangle className="h-4 w-4 text-red-500" />} title="리스크 시나리오" />
+          <BulletList items={final_report.risk_scenarios} variant="risk" />
         </div>
       </div>
 
-      {/* ── 6. Graph RAG Insights ─────────────────────────────────── */}
-      <div className="card p-6">
-        <SectionHeader icon={<Network className="h-4 w-4" />} title="Graph RAG 기반 인사이트" />
-
-        {graph_insights.length > 0 && (
-          <div className="mb-5 space-y-2">
-            {graph_insights.map((insight, i) => (
-              <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
-                <ArrowRight className="h-4 w-4 text-brand-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-slate-700 leading-relaxed">{insight}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {knowledge_graph.nodes?.length > 0 && (
-          <div>
-            <p className="text-xs font-medium text-slate-500 mb-3 uppercase tracking-wider">
-              지식 그래프 노드
-            </p>
-            <div className="space-y-2">
-              {(["company", "product", "trend", "threat"] as const).map((nodeType) => {
-                const nodes = nodesByType[nodeType];
-                if (!nodes?.length) return null;
-                return (
-                  <div key={nodeType} className="flex flex-wrap gap-2 items-center">
-                    {nodes.map((node) => (
-                      <div key={node.id} className="flex items-center gap-1.5" title={node.description}>
-                        <NodeTypeBadge type={node.type} />
-                        <span className="text-xs text-slate-700 font-medium">{node.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {knowledge_graph.edges?.length > 0 && (
-          <div className="mt-4">
-            <p className="text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">
-              주요 관계 (Edges)
-            </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="text-left py-2 pr-4 font-medium text-slate-500">Source</th>
-                    <th className="text-left py-2 px-4 font-medium text-slate-500">Relation</th>
-                    <th className="text-left py-2 pl-4 font-medium text-slate-500">Target</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {knowledge_graph.edges.slice(0, 10).map((edge, i) => (
-                    <tr key={i} className="border-b border-slate-100 last:border-0">
-                      <td className="py-1.5 pr-4 text-slate-700">{edge.source}</td>
-                      <td className="py-1.5 px-4">
-                        <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono">
-                          {edge.relation}
-                        </span>
-                      </td>
-                      <td className="py-1.5 pl-4 text-slate-700">{edge.target}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+      {/* ── 6. 액션 플랜 ────────────────────────────────────────────── */}
+      <div className="card p-5">
+        <SectionHeader icon={<Lightbulb className="h-4 w-4 text-brand-600" />} title="액션 플랜" />
+        <BulletList items={final_report.strategic_recommendations} variant="action" />
       </div>
 
-      {/* ── 7. Strategic Recommendations ─────────────────────────── */}
-      <div className="card p-6">
-        <SectionHeader icon={<Shield className="h-4 w-4" />} title="전략적 권고사항" />
-        <BulletList items={final_report.strategic_recommendations} variant="recommendation" />
-      </div>
-
-      {/* ── 8. References ─────────────────────────────────────────── */}
+      {/* ── 7. 출처 ─────────────────────────────────────────────────── */}
       {references.length > 0 && (
-        <div className="card p-6">
-          <SectionHeader
-            icon={<BookOpen className="h-4 w-4" />}
-            title="Reference — 참고 문헌 및 출처"
-          />
+        <div className="card p-5">
+          <SectionHeader icon={<BookOpen className="h-4 w-4" />} title="참고 출처" />
           <div className="space-y-0">
             {references.map((ref, i) => (
-              <div key={i} className="flex items-start gap-3 py-2.5 border-b border-slate-100 last:border-0">
-                <span className="flex-shrink-0 text-xs font-medium text-slate-400 w-5 pt-0.5">
-                  {i + 1}.
-                </span>
+              <div key={i} className="flex items-start gap-3 py-2 border-b border-slate-100 last:border-0">
+                <span className="text-xs text-slate-400 w-4 pt-0.5">{i + 1}.</span>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-xs font-medium text-slate-800 truncate">{ref.title}</p>
-                    <span className="flex-shrink-0 text-xs text-slate-400 font-mono">{ref.source}</span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">{ref.snippet}</p>
+                  <p className="text-xs font-medium text-slate-700 truncate">{ref.title}</p>
                   {ref.url && (
                     <a
                       href={ref.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 mt-1 text-xs text-brand-600 hover:text-brand-700 hover:underline"
+                      className="inline-flex items-center gap-1 mt-0.5 text-xs text-brand-600 hover:underline"
                     >
-                      <ExternalLink className="h-3 w-3" />
-                      {ref.url.length > 60 ? ref.url.slice(0, 60) + "..." : ref.url}
+                      <ExternalLink className="h-2.5 w-2.5" />
+                      {ref.url.length > 55 ? ref.url.slice(0, 55) + "..." : ref.url}
                     </a>
                   )}
                 </div>
               </div>
             ))}
           </div>
-          <p className="mt-4 text-xs text-slate-400 italic">
-            위 자료는 AI 에이전트가 수집한 정보를 포함하며, 내용의 정확성은 원문 출처를 통해 직접 확인하시기 바랍니다.
-          </p>
         </div>
       )}
     </div>

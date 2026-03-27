@@ -1,6 +1,9 @@
 "use client";
 
-import { FileText, Search, Upload, X } from "lucide-react";
+import FileText from "lucide-react/dist/esm/icons/file-text";
+import Search   from "lucide-react/dist/esm/icons/search";
+import Upload   from "lucide-react/dist/esm/icons/upload";
+import X        from "lucide-react/dist/esm/icons/x";
 import { useCallback, useRef, useState } from "react";
 
 const BACKEND_URL =

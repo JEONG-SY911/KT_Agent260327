@@ -4,7 +4,7 @@ All fields include Korean-language descriptions to guide the LLM.
 """
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -154,20 +154,44 @@ class GraphStructuringOutput(BaseModel):
 
 class ReporterOutput(BaseModel):
     executive_summary: str = Field(
-        description="전체 분석 요약 (3~5문장, C레벨 의사결정자 대상, 핵심만 직설적으로)"
+        description="시장 진입 관점 핵심 요약 (2~3문장, 가장 중요한 기회와 리스크 중심)"
     )
-    positioning_summary: str = Field(
-        description="사용자 제품의 시장 내 포지셔닝 상세 분석 (3~5문장)"
+    # 시장 규모
+    market_size_tam: str = Field(
+        description="TAM(전체 시장 규모): 해당 산업 전체 시장 크기 및 성장률 (예: 국내 약 2조원, 연 15% 성장)"
     )
-    market_opportunities: list[str] = Field(
-        description="시장 기회 요소 3~5개 (각 항목은 구체적인 근거와 함께)"
+    market_size_sam: str = Field(
+        description="SAM(유효 시장 규모): 실제 공략 가능한 세그먼트 크기 (예: 중견기업 대상 약 4천억원)"
     )
-    threat_factors: list[str] = Field(
-        description="위협 요소 및 리스크 3~5개 (각 항목은 구체적인 근거와 함께)"
+    market_size_som: str = Field(
+        description="SOM(획득 가능 시장): 초기 3년 내 현실적으로 획득 가능한 규모 (예: 약 200~400억원)"
     )
+    market_maturity: Literal["도입기", "성장기", "성숙기", "쇠퇴기"] = Field(
+        description="시장 성숙도 단계: 도입기/성장기/성숙기/쇠퇴기 중 하나"
+    )
+    # 진입 장벽
+    entry_barriers: list[str] = Field(
+        description="시장 진입 장벽 3~5개 (규제, 초기 투자, 전환 비용, 기술/특허 등)"
+    )
+    # 차별화
+    differentiation_points: list[str] = Field(
+        description="경쟁사 약점 기반 차별화 포인트 3~5개 (우리가 파고들 수 있는 틈새)"
+    )
+    # Go-to-Market
+    gtm_channels: list[str] = Field(
+        description="권장 유통/판매 채널 2~3개 (경쟁사 채널 분석 기반)"
+    )
+    first_customer_hint: str = Field(
+        description="첫 고객 확보 전략: 초기 타겟 고객 세그먼트와 레퍼런스 확보 방법 (2~3문장)"
+    )
+    entry_route: str = Field(
+        description="권장 진입 경로: 자체 개발 / 파트너십 / M&A 중 선택 및 이유 (2~3문장)"
+    )
+    # 리스크
+    risk_scenarios: list[str] = Field(
+        description="진입 후 리스크 시나리오 2~3개 (경쟁사 대응, 시장 변화, 피벗 옵션 포함)"
+    )
+    # 액션 플랜
     strategic_recommendations: list[str] = Field(
-        description="실행 가능한 전략적 권고사항 3~5개 (우선순위 순)"
-    )
-    competitive_analysis_summary: str = Field(
-        description="경쟁 환경 종합 분석 (2~3문장)"
+        description="우선순위 순 실행 가능한 전략적 권고사항 3~5개"
     )

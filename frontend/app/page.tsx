@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertCircle, RotateCcw } from "lucide-react";
+import AlertCircle from "lucide-react/dist/esm/icons/alert-circle";
+import RotateCcw   from "lucide-react/dist/esm/icons/rotate-ccw";
 import { useCallback, useState } from "react";
 
 import { AgentProgress } from "@/components/AgentProgress";
