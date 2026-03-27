@@ -52,13 +52,29 @@ export interface KnowledgeGraph {
   edges: GraphEdge[];
 }
 
+export type MarketMaturity = "도입기" | "성장기" | "성숙기" | "쇠퇴기";
+
 export interface FinalReport {
   executive_summary: string;
   positioning_summary: string;
+  competitive_analysis_summary: string;
   market_opportunities: string[];
   threat_factors: string[];
   strategic_recommendations: string[];
-  competitive_analysis_summary: string;
+  // 시장 규모 (TAM / SAM / SOM)
+  market_size_tam: string;
+  market_size_sam: string;
+  market_size_som: string;
+  market_maturity: MarketMaturity;
+  // 진입 장벽 / 차별화
+  entry_barriers: string[];
+  differentiation_points: string[];
+  // Go-to-Market
+  gtm_channels: string[];
+  first_customer_hint: string;
+  entry_route: string;
+  // 리스크
+  risk_scenarios: string[];
 }
 
 // ──────────────────────────────────────────────────────────────────────

@@ -2,12 +2,13 @@
 
 import {
   BarChart2,
+  Download,
   FileText,
   Loader2,
   TrendingUp,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type {
   AnalysisResult,
@@ -164,8 +165,10 @@ export function OnepageReportDrawer({
   const [report, setReport] = useState<OnepageReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isPdfExporting, setIsPdfExporting] = useState(false);
   // Cache results by report type so re-opening the same type is instant
   const [cache, setCache] = useState<Partial<Record<ReportType, OnepageReport>>>({});
+  const pdfRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isOpen || !reportType) return;
@@ -215,6 +218,45 @@ export function OnepageReportDrawer({
   }, [isOpen, reportType]);
 
   const meta = reportType ? REPORT_META[reportType] : null;
+
+  async function handlePdfExport() {
+    if (!pdfRef.current || !report) return;
+    setIsPdfExporting(true);
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+      const canvas = await html2canvas(pdfRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const ratio = canvas.height / canvas.width;
+      const imgH = pageW * ratio;
+      if (imgH <= pageH) {
+        pdf.addImage(imgData, "PNG", 0, 0, pageW, imgH);
+      } else {
+        let yOffset = 0;
+        while (yOffset < canvas.height) {
+          const sliceH = Math.min(canvas.height - yOffset, (canvas.width * pageH) / pageW);
+          const sliceCanvas = document.createElement("canvas");
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = sliceH;
+          sliceCanvas.getContext("2d")!.drawImage(canvas, 0, -yOffset);
+          pdf.addImage(sliceCanvas.toDataURL("image/png"), "PNG", 0, 0, pageW, (sliceH / canvas.width) * pageW);
+          yOffset += sliceH;
+          if (yOffset < canvas.height) pdf.addPage();
+        }
+      }
+      const slug = reportType ?? "onepage";
+      pdf.save(`${slug}-report.pdf`);
+    } finally {
+      setIsPdfExporting(false);
+    }
+  }
 
   return (
     <>
@@ -285,13 +327,89 @@ export function OnepageReportDrawer({
 
         {/* Footer */}
         {!isLoading && report && (
-          <div className="px-6 py-3 border-t border-slate-100 flex-shrink-0">
-            <p className="text-xs text-slate-400 italic">
+          <div className="px-6 py-3 border-t border-slate-100 flex-shrink-0 flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-400 italic flex-1">
               이 보고서는 수집된 시장 분석 데이터를 기반으로 AI가 생성한 원페이지 요약입니다.
             </p>
+            <button
+              onClick={handlePdfExport}
+              disabled={isPdfExporting}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs font-medium hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+            >
+              {isPdfExporting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              {isPdfExporting ? "생성 중..." : "PDF 저장"}
+            </button>
           </div>
         )}
       </div>
+
+      {/* Hidden PDF render target */}
+      {report && (
+        <div className="fixed left-[-9999px] top-0 z-[-1]">
+          <div
+            ref={pdfRef}
+            className="font-sans text-[11px] leading-relaxed text-gray-800 bg-white w-[794px] p-10 box-border"
+          >
+            {/* Header */}
+            <div className="border-b-2 border-gray-800 pb-2 mb-5">
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-lg font-bold text-gray-900">{report.title}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{meta?.label} 보고서</p>
+                </div>
+                <p className="text-[10px] text-gray-400">{new Date().toLocaleDateString("ko-KR")}</p>
+              </div>
+              <p className="mt-1.5 text-[10px] text-gray-500">대상: {result.product_description?.slice(0, 80)}</p>
+            </div>
+
+            {/* Subtitle */}
+            <p className="text-[11px] text-gray-600 mb-5 pl-3 border-l-2 border-gray-300 leading-relaxed">
+              {report.subtitle}
+            </p>
+
+            {/* Sections */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              {report.sections.slice(0, 2).map((s) => (
+                <div key={s.title} className="border border-gray-200 rounded p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1.5 border-b border-gray-200 pb-0.5">{s.title}</p>
+                  <p className="text-[11px] text-gray-700 leading-relaxed">{s.content}</p>
+                </div>
+              ))}
+            </div>
+            {report.sections[2] && (
+              <div className="border border-gray-300 rounded p-3 mb-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1.5 border-b border-gray-200 pb-0.5">{report.sections[2].title}</p>
+                <p className="text-[11px] text-gray-700 leading-relaxed">{report.sections[2].content}</p>
+              </div>
+            )}
+
+            {/* Summary cards */}
+            {report.summary_cards.length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2 border-b border-gray-200 pb-0.5">핵심 요약</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {report.summary_cards.map((card) => (
+                    <div key={card.label} className="border border-gray-200 rounded p-2.5">
+                      <p className="text-[10px] text-gray-500 mb-0.5">{card.label}</p>
+                      <p className="text-[11px] font-semibold text-gray-800">{card.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="mt-8 pt-2 border-t border-gray-200 flex justify-between text-[9px] text-gray-400">
+              <span>Market Intelligence Agent · AI 생성 보고서</span>
+              <span>{new Date().toLocaleDateString("ko-KR")}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

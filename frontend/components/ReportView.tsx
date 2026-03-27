@@ -23,24 +23,16 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import { OnepageReportDrawer } from "@/components/OnepageReportDrawer";
+import { PdfExportButtons } from "@/components/PdfExportButtons";
 import type {
   AnalysisResult,
-  ComparisonEntry,
-  ComparisonReport,
   GraphNode,
   Phase1CompetitorItem,
   PricingEntry,
   PricingIntelligence,
-  ReportType,
-  SingleDeepDiveReport,
   SpecComparison,
-  SpecRow,
   SWOTItem,
 } from "@/types/analysis";
-
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
 interface ReportViewProps {
   result: AnalysisResult;
@@ -601,161 +593,6 @@ function SWOTGrid({ swot }: { swot: SWOTItem }) {
   );
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Single deep-dive report view
-// ──────────────────────────────────────────────────────────────────────
-
-function SingleDeepDiveReportView({ report }: { report: SingleDeepDiveReport }) {
-  return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="card p-6 border-l-4 border-brand-600">
-        <div className="flex items-center gap-2 mb-1">
-          <Building2 className="h-4 w-4 text-slate-500" />
-          <h3 className="text-base font-bold text-slate-900">{report.company_name}</h3>
-          <span className="ml-auto text-xs text-slate-400 font-mono">단독 심층 분석</span>
-        </div>
-        <p className="text-sm text-slate-700 leading-relaxed">{report.business_model_detail}</p>
-      </div>
-
-      {/* Core Tech + Key Products */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card p-5">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-            핵심 기술력
-          </p>
-          <p className="text-sm text-slate-700 leading-relaxed">{report.core_technology}</p>
-        </div>
-        <div className="card p-5">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            주요 제품 / 서비스
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {report.key_products.map((p) => (
-              <span
-                key={p}
-                className="inline-block px-2.5 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium"
-              >
-                {p}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* SWOT */}
-      <div className="card p-6">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
-          SWOT 분석
-        </p>
-        <SWOTGrid swot={report.swot} />
-      </div>
-
-      {/* Recent Highlights + Pain Points */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card p-5">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            최근 1년 주요 이슈
-          </p>
-          <BulletList items={report.recent_highlights} />
-        </div>
-        <div className="card p-5">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            고객 불만 및 경쟁 약점
-          </p>
-          <BulletList items={report.customer_pain_points} variant="threat" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Comparison report view
-// ──────────────────────────────────────────────────────────────────────
-
-const COMPARISON_ROWS: { key: keyof ComparisonEntry; label: string }[] = [
-  { key: "core_service",    label: "핵심 서비스" },
-  { key: "target_customer", label: "타겟 고객" },
-  { key: "pricing_model",   label: "가격 정책" },
-  { key: "market_position", label: "시장 포지션" },
-  { key: "top_strength",    label: "핵심 강점" },
-  { key: "top_weakness",    label: "핵심 약점" },
-];
-
-function ComparisonReportView({ report }: { report: ComparisonReport }) {
-  return (
-    <div className="space-y-5">
-      {/* Comparison table */}
-      <div className="card p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Users className="h-4 w-4 text-slate-500" />
-          <h3 className="section-title">기업 비교 분석</h3>
-          <span className="ml-auto text-xs text-slate-400 font-mono">
-            {report.entries.length}개 기업 비교
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-slate-200">
-                <th className="py-2.5 pr-4 text-left font-semibold text-slate-500 w-28 min-w-[7rem]">
-                  항목
-                </th>
-                {report.entries.map((e) => (
-                  <th
-                    key={e.company_name}
-                    className="py-2.5 px-3 text-left font-semibold text-slate-800"
-                  >
-                    {e.company_name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {COMPARISON_ROWS.map(({ key, label }) => (
-                <tr key={key} className="border-b border-slate-100 last:border-0">
-                  <td className="py-2.5 pr-4 font-medium text-slate-500 align-top">
-                    {label}
-                  </td>
-                  {report.entries.map((e) => (
-                    <td
-                      key={e.company_name}
-                      className="py-2.5 px-3 text-slate-700 leading-relaxed align-top"
-                    >
-                      {key === "top_strength" && (
-                        <span className="flex items-start gap-1.5">
-                          <span className="text-emerald-500 mt-0.5 flex-shrink-0">+</span>
-                          {e[key]}
-                        </span>
-                      )}
-                      {key === "top_weakness" && (
-                        <span className="flex items-start gap-1.5">
-                          <span className="text-red-400 mt-0.5 flex-shrink-0">-</span>
-                          {e[key]}
-                        </span>
-                      )}
-                      {key !== "top_strength" && key !== "top_weakness" && e[key]}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Summary */}
-      <div className="card p-5 border-l-4 border-slate-300">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-          비교 분석 종합 인사이트
-        </p>
-        <p className="text-sm text-slate-700 leading-relaxed">{report.summary}</p>
-      </div>
-    </div>
-  );
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // Main ReportView component
@@ -810,14 +647,6 @@ export function ReportView({ result }: ReportViewProps) {
     window.open("/deep-dive", "_blank");
   }
 
-  // ── One-page report drawer state ──────────────────────────────────
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerType, setDrawerType] = useState<ReportType | null>(null);
-
-  function openDrawer(type: ReportType) {
-    setDrawerType(type);
-    setDrawerOpen(true);
-  }
 
   // ── Derived ───────────────────────────────────────────────────────
   const directCompetitors   = competitors.filter((c) => c.type === "direct");
@@ -836,14 +665,21 @@ export function ReportView({ result }: ReportViewProps) {
   }, {}) ?? {};
 
   return (
-    <>
-    <OnepageReportDrawer
-      isOpen={drawerOpen}
-      reportType={drawerType}
-      result={result}
-      onClose={() => setDrawerOpen(false)}
-    />
     <div className="space-y-6">
+      {/* ── 0. 목적별 원페이지 보고서 PDF 내보내기 ──────────────────── */}
+      <div className="card p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Zap className="h-4 w-4 text-slate-400" />
+          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            목적별 원페이지 보고서 생성
+          </h2>
+        </div>
+        <p className="text-xs text-slate-400 mb-5">
+          수집된 분석 데이터를 바탕으로 용도에 맞는 원페이지 보고서를 PDF로 즉시 생성합니다.
+        </p>
+        <PdfExportButtons result={result} />
+      </div>
+
       {/* ── 1. Executive Insight Panel (NEW) ─────────────────────── */}
       {strategic_action_summary && (
         <ExecutiveInsightPanel
@@ -1203,7 +1039,7 @@ export function ReportView({ result }: ReportViewProps) {
         <BulletList items={final_report.strategic_recommendations} variant="recommendation" />
       </div>
 
-      {/* ── 8. References ─────────────────────────────────────────── */}
+      {/* ── 8. References ────────────────────────────────────────── */}
       {references.length > 0 && (
         <div className="card p-6">
           <SectionHeader
@@ -1243,65 +1079,6 @@ export function ReportView({ result }: ReportViewProps) {
         </div>
       )}
 
-      {/* ── 9. Purpose-Driven Action Panel ───────────────────────── */}
-      <div className="card p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <Zap className="h-4 w-4 text-slate-400" />
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            목적별 원페이지 보고서 생성
-          </h2>
-        </div>
-        <p className="text-xs text-slate-400 mb-5">
-          수집된 분석 데이터를 바탕으로 용도에 맞는 원페이지 보고서를 즉시 생성합니다.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <button
-            onClick={() => openDrawer("market_entry")}
-            className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3.5 text-left hover:border-brand-400 hover:bg-brand-50/30 transition-colors group"
-          >
-            <TrendingUp className="h-4 w-4 text-slate-400 group-hover:text-brand-600 flex-shrink-0 mt-0.5 transition-colors" />
-            <div>
-              <p className="text-xs font-semibold text-slate-700 group-hover:text-brand-700 transition-colors">
-                시장 진입전략 보고서
-              </p>
-              <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
-                경쟁 빈틈 · 타겟 세분화 · GTM 메시지
-              </p>
-            </div>
-          </button>
-
-          <button
-            onClick={() => openDrawer("competitive_bid")}
-            className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3.5 text-left hover:border-brand-400 hover:bg-brand-50/30 transition-colors group"
-          >
-            <FileText className="h-4 w-4 text-slate-400 group-hover:text-brand-600 flex-shrink-0 mt-0.5 transition-colors" />
-            <div>
-              <p className="text-xs font-semibold text-slate-700 group-hover:text-brand-700 transition-colors">
-                경쟁입찰 제안 보고서
-              </p>
-              <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
-                USP 우위 · ROI 정량화 · 반론 대응
-              </p>
-            </div>
-          </button>
-
-          <button
-            onClick={() => openDrawer("investment_decision")}
-            className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3.5 text-left hover:border-brand-400 hover:bg-brand-50/30 transition-colors group"
-          >
-            <BarChart2 className="h-4 w-4 text-slate-400 group-hover:text-brand-600 flex-shrink-0 mt-0.5 transition-colors" />
-            <div>
-              <p className="text-xs font-semibold text-slate-700 group-hover:text-brand-700 transition-colors">
-                내부 투자 결정 보고서
-              </p>
-              <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
-                시장 규모 · 예산 추정 · 리스크 헷징
-              </p>
-            </div>
-          </button>
-        </div>
-      </div>
     </div>
-    </>
   );
 }
