@@ -15,6 +15,7 @@ Nodes return a partial state dict; LangGraph merges it with the existing state.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -56,39 +57,39 @@ def _llm(temperature: float = 0) -> ChatOpenAI:
 
 _MARKET_SCAN_SYSTEM = """당신은 냉철하고 객관적인 시니어 전략 컨설턴트입니다.
 감정적 표현 없이 데이터와 논리에 기반하여 직설적으로 분석합니다.
+분석 의뢰자는 KT(케이티) 소속 직원입니다. KT는 경쟁사에서 반드시 제외하십시오.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[STEP 1: 비즈니스 모델(BM) 분류 — 경쟁사 나열 전 필수 선행]
+[분석 컨텍스트: KT GPU IaaS 상품]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-사용자 제품의 BM을 아래 중 하나로 먼저 분류하십시오:
-
-  BM-A (서비스형)  : SaaS / IaaS / PaaS / BaaS — 소프트웨어·인프라를 구독 또는 종량제로 제공
-  BM-B (하드웨어)  : 반도체, 서버, GPU, 네트워크 장비 등 물리적 제품 제조·판매 (OEM/Vendor)
-  BM-C (SI/컨설팅): 프로젝트 기반 IT 구축·운영 서비스
-
-[강제 필터링 규칙 — BM 불일치 기업 완전 배제]
-  - 사용자 BM이 A(서비스형)이면:
-      BM-B(하드웨어 OEM·제조사)는 경쟁사 목록에서 완전히 제외합니다.
-      (올바른 예) GPU 클라우드 서비스 → CoreWeave, Lambda Labs, Vast.ai 포함
-                                        → Nvidia(반도체 제조사) 제외
-      (잘못된 예) GPU 클라우드 서비스 → Nvidia를 경쟁사로 포함 — BM 불일치, 허용 불가
-  - 사용자 BM이 B(하드웨어)이면:
-      BM-A(SaaS·클라우드 서비스사)는 경쟁사 목록에서 제외합니다.
-  - 반드시 "동일한 서비스 딜리버리 모델"을 보유한 기업만 후보군으로 인정합니다.
+KT는 GPU를 IaaS(Infrastructure as a Service) 형태로 국내 엔터프라이즈 및 SMB 고객군에 판매하는 상품을 출시하고자 합니다.
+분석 대상: 대한민국 국내 기업만. 해외·글로벌 기업(AWS, Azure, Google 등) 완전 제외. KT(KT Cloud 포함) 제외.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[STEP 2: Phase 1 시장 스캔 — BM 필터링 통과 기업만 나열]
+[경쟁사 유형 분류 기준 — GPU IaaS 특화]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-요구사항:
-- 최소 5개 이상의 경쟁사를 도출합니다 (BM 일치 기업만).
-- 글로벌 기업과 국내(한국) 기업을 반드시 혼합하여 포함합니다.
-- 국내 B2B 시장의 경우 아래 기업군을 우선 검토하고, BM이 일치하면 반드시 포함하십시오:
-    통신사 클라우드 : SKT(T클라우드비즈), KT(KT Cloud), LG유플러스 기업솔루션
-    대형 SI·IT서비스: 삼성SDS, LG CNS, SK C&C, 롯데정보통신, 현대오토에버
-    클라우드 네이티브: 네이버클라우드, 카카오클라우드, NHN클라우드
-- 각 기업의 예상 시장 점유율, 투자 현황, 설립 연도 등 메타데이터를 파악합니다.
-- relevance_score(경쟁 위협도 1-10)를 기준으로 내림차순 정렬합니다.
-- type은 direct / indirect / adjacent 중 하나로 분류합니다.
+
+  ▶ direct (주요 경쟁사):
+    현재 이미 GPU를 IaaS 방식(온디맨드/구독/종량제)으로 국내 기업 고객에게 제공 중인 기업.
+    실제 GPU 클라우드 서비스를 운영 중이어야 함.
+    예시 후보: 네이버클라우드(GPU 클라우드), NHN클라우드(GPU 서버), SKT T클라우드비즈,
+              카카오클라우드, 가비아, iwinv(인터넷나야나) 등
+
+  ▶ indirect (잠재적 경쟁사):
+    현재 GPU IaaS 상품은 없으나, 보유한 인프라·클라우드·SI 역량으로 향후 GPU IaaS 시장 진입이
+    가능한 기업. 엔터프라이즈·SMB 고객군을 이미 보유하고 있어 진입 시 즉각적 위협이 될 수 있음.
+    예시 후보: 삼성SDS, LG CNS, SK C&C, 롯데정보통신, 현대오토에버, LG유플러스 기업솔루션 등
+
+  ▶ adjacent (인접 시장):
+    GPU IaaS와 직접 경쟁하지 않지만 대체재 또는 연관 시장에 존재하는 기업.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Phase 1 시장 스캔 요구사항]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 국내 기업만, KT 제외, 최소 7개 이상 도출 (direct 최소 3개, indirect 최소 3개)
+- 각 기업의 GPU IaaS 상품 보유 여부, 예상 시장 점유율, 투자 현황, 설립 연도 포함
+- relevance_score(경쟁 위협도 1-10)를 기준으로 내림차순 정렬
+- description에 GPU IaaS 상품명 또는 진입 가능성 근거를 반드시 포함
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [입력 유효성 판단]
@@ -152,39 +153,51 @@ async def market_scan_node(state: AgentState, writer: StreamWriter) -> dict[str,
 # ──────────────────────────────────────────────────────────────────────
 
 _COMPETITOR_SELECT_SYSTEM = """당신은 냉철하고 객관적인 시니어 전략 컨설턴트입니다.
+분석 의뢰자는 KT(케이티) 소속 직원입니다. KT GPU IaaS 상품의 국내 경쟁 환경을 두 그룹으로 분리 분석합니다.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[STEP 1: BM 일치성 재검증 — 선정 전 필수]
+[STEP 1: GPU IaaS 보유 여부 재검증]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Phase 1 목록에서 각 후보의 BM이 사용자 제품과 일치하는지 재확인합니다.
-
-  확인 항목: 후보가 사용자와 동일한 서비스 딜리버리 모델(SaaS/IaaS/하드웨어 등)인가?
-  제외 규칙: 하드웨어 OEM·반도체 제조사가 Phase 1 목록에 포함되어 있다면
-             이 단계에서 강제 제외합니다. 선정 대상에서 완전히 배제합니다.
+Phase 1 목록에서 각 후보의 GPU IaaS 상품 실제 보유 여부를 재확인합니다.
+  - direct: 현재 실제로 GPU IaaS 서비스를 운영 중인 기업
+  - indirect: GPU IaaS는 없지만 향후 진입 가능한 잠재적 경쟁사
+  - KT(KT Cloud 포함) 및 해외 기업은 무조건 제외
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[STEP 2: 핵심 경쟁사 선정 및 심층 분석]
+[STEP 2: 두 그룹으로 분리 선정 — 총 5곳]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-BM 검증을 통과한 후보 중 사용자 제품에 가장 위협적인 2~3곳을 선정합니다.
 
-[선정 기준 (우선순위 순)]
-1. BM 일치 여부 — 반드시 동일한 서비스 딜리버리 모델이어야 함 (하드웨어 OEM 완전 배제)
-2. 타겟 고객 겹침 정도 — 동일 고객 세그먼트를 직접 공략하는가?
-3. 핵심 기능 유사성 — 사용자 제품과 기능이 얼마나 겹치는가?
-4. 시장 내 영향력 — relevance_score, 투자 규모, 시장 점유율
-5. 진입 위협 — 신규 진입이나 기능 확장 가능성
+▶ 그룹 A — 주요 경쟁사 (type=direct): 정확히 3곳
+  현재 GPU IaaS를 실제 제공 중인 국내 기업 중 KT에 가장 위협적인 3곳 선정.
+  [선정 기준]
+  1. GPU IaaS 서비스 실제 운영 여부 (필수)
+  2. 엔터프라이즈·SMB 고객 확보 규모
+  3. GPU 자원 규모 및 서비스 안정성
+  4. 가격 경쟁력 및 국내 시장 점유율
+
+▶ 그룹 B — 잠재적 경쟁사 (type=indirect): 정확히 2곳
+  현재 GPU IaaS는 없지만 인프라·클라우드·SI 역량으로 단기~중기 내 시장 진입이 유력한 기업.
+  [선정 기준]
+  1. 기존 엔터프라이즈 고객 기반 (즉시 전환 위협)
+  2. 데이터센터·서버 인프라 보유 여부
+  3. AI·클라우드 사업 전략 방향
+  4. 자본력 및 투자 의지
 
 [심층 프로필 작성 지침]
-- key_products: 실제 제품명 또는 기능명 (추측 금지)
-- strengths/weaknesses: 사용자 제품 관점에서의 차별화 포인트 포함
-- 약점은 사용자 제품이 차별화할 수 있는 기회 관점에서 서술"""
+- key_products: 기존 보유 클라우드/인프라 제품명 또는 GPU IaaS 상품명 (추측 금지)
+- strengths: KT GPU IaaS 대비 위협이 되는 강점
+- weaknesses: KT가 차별화할 수 있는 기회 포인트
+- estimated_market_position: GPU IaaS 시장 내 현재 또는 예상 포지션"""
 
-_COMPETITOR_SELECT_HUMAN = """사용자 제품 설명: {product_description}
+_COMPETITOR_SELECT_HUMAN = """KT 제품: GPU를 IaaS 형태로 국내 엔터프라이즈·SMB 고객에게 제공하는 서비스
+제품 추가 설명: {product_description}
 
 Phase 1 경쟁사 목록 (relevance_score 내림차순):
 {phase1_summary}
 
-위 목록에서 핵심 경쟁사 2~3곳을 선정하고 심층 분석 프로필을 작성해 주세요."""
+위 목록에서 아래 두 그룹으로 분리하여 총 5곳을 선정하고 심층 분석 프로필을 작성해 주세요.
+- 그룹 A (type=direct): 이미 GPU IaaS 보유한 주요 경쟁사 정확히 3곳
+- 그룹 B (type=indirect): 향후 진입 가능한 잠재적 경쟁사 정확히 2곳"""
 
 
 async def competitor_select_node(state: AgentState, writer: StreamWriter) -> dict[str, Any]:
@@ -235,36 +248,38 @@ async def competitor_select_node(state: AgentState, writer: StreamWriter) -> dic
 # ──────────────────────────────────────────────────────────────────────
 
 _PLANNER_SYSTEM = """당신은 냉철하고 객관적인 시니어 전략 컨설턴트입니다.
-경쟁사 목록과 사용자 제품 정보를 바탕으로 심층 분석을 위한 최적의 검색 키워드를 도출합니다.
+KT GPU IaaS 상품의 국내 경쟁 환경을 심층 분석하기 위한 검색 키워드를 도출합니다.
+분석 의뢰자는 KT(케이티) 소속 직원이며, 국내 기업만 대상입니다.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[국내 시장 탐색 의무화 — 빅테크 편향 보정]
+[국내 GPU IaaS 시장 탐색 전용]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-글로벌 검색만으로는 AWS, MS Azure, Google Cloud 등 빅테크 위주로 결과가 편향되어
-국내 실질 경쟁사(통신사·대형 SI)가 누락됩니다.
+모든 키워드는 국내(한국) GPU IaaS 시장 탐색에 집중합니다.
+해외 기업(AWS, Azure, Google 등) 관련 키워드는 생성하지 않습니다.
 
-아래 국내 기업군이 해당 시장에서 경쟁하는지 확인하는 키워드를 2개 이상 반드시 포함하세요:
+키워드는 아래 두 그룹을 균형 있게 탐색해야 합니다:
 
-  통신사 클라우드 : SKT T클라우드비즈, KT Cloud, LG유플러스 기업솔루션
-  대형 SI·IT서비스: 삼성SDS, LG CNS, SK C&C, 롯데정보통신, 현대오토에버
-  클라우드 네이티브: 네이버클라우드, 카카오클라우드, NHN클라우드
+  [주요 경쟁사 탐색] — 이미 GPU IaaS 운영 중인 국내 기업
+    네이버클라우드 GPU 서비스, NHN클라우드 GPU, SKT T클라우드비즈 GPU,
+    카카오클라우드 GPU, 국내 GPU 클라우드 서비스 현황, 국내 AI 인프라 IaaS
+
+  [잠재적 경쟁사 탐색] — GPU IaaS 진입 가능한 국내 SI·인프라 기업
+    삼성SDS LG CNS SK C&C GPU 클라우드 신사업, 국내 SI 기업 AI 인프라 전략,
+    대기업 IT 서비스사 GPU 클라우드 진출 계획
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[키워드 구성 비율]
+[키워드 구성 원칙]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- 국내 타겟 (50% 이상): 위 기업명 포함 한글 키워드, "국내 시장 점유율", "한국 엔터프라이즈" 등
-- 글로벌 타겟 (나머지): 경쟁사명 + 기능/가격/평가 조합 영문 키워드
-
-키워드 생성 예시:
-  국내 의무 포함: "GPU 클라우드 국내 경쟁사 SKT KT 삼성SDS 2024"
-  국내 의무 포함: "한국 AI 인프라 대여 클라우드 통신사 AIDC 엔터프라이즈"
-  글로벌: "GPU cloud IaaS competitor pricing Lambda Labs CoreWeave 2024"
+- 전체를 국내 시장 한글 키워드로만 구성합니다.
+- 엔터프라이즈·SMB 고객 관점의 GPU IaaS 채택 동향도 포함합니다.
+- KT 관점에서 위협이 되는 경쟁사의 GPU 전략·신사업·가격 정책 탐색에 초점을 맞춥니다.
 
 총 4~6개의 키워드를 도출하세요."""
 
-_PLANNER_HUMAN = """제품 설명: {product_description}
+_PLANNER_HUMAN = """KT 제품: GPU IaaS (국내 엔터프라이즈·SMB 대상)
+추가 설명: {product_description}
 
-핵심 경쟁사 목록:
+선정된 경쟁사 목록 (주요 경쟁사 + 잠재적 경쟁사):
 {competitors_summary}
 
 심층 분석을 위한 검색 키워드를 기획해 주세요."""
@@ -312,10 +327,10 @@ async def planner_node(state: AgentState, writer: StreamWriter) -> dict[str, Any
 
 _KOREAN_INDICATORS = ("국내", "한국", "korea", "korean", "site:kr", "국내 경쟁", "한국 스타트업")
 
-# 플래너 키워드와 무관하게 항상 실행되는 국내 통신·SI 기업 탐색 쿼리
+# 플래너 키워드와 무관하게 항상 실행되는 국내 통신·SI 기업 탐색 쿼리 (KT 제외)
 _DOMESTIC_TELCO_SI_QUERY = (
     "국내 클라우드 통신사 SI 대기업 엔터프라이즈 서비스 "
-    "SKT KT 삼성SDS LG CNS 네이버클라우드 카카오클라우드 시장 점유율"
+    "SKT 삼성SDS LG CNS 네이버클라우드 카카오클라우드 시장 점유율"
 )
 
 
@@ -334,10 +349,11 @@ def _enhance_korean_query(query: str) -> str:
 def _build_domestic_b2b_query(competitors: list[dict]) -> str:
     """
     Builds a context-aware domestic B2B query using Phase 2 competitor names
-    so search results are relevant to the specific market segment.
+    so search results are relevant to the specific market segment. KT excluded.
     """
     known_names = " ".join(
-        c.get("name", "") for c in competitors[:2] if c.get("name")
+        c.get("name", "") for c in competitors[:2]
+        if c.get("name") and "kt" not in c.get("name", "").lower()
     ).strip()
     if known_names:
         return f"한국 B2B 엔터프라이즈 국내 경쟁사 {known_names} 통신사 SI 시장 2024"
@@ -348,37 +364,44 @@ async def researcher_node(state: AgentState, writer: StreamWriter) -> dict[str, 
     writer({"type": "stage_start", "node": "researcher", "step": 4,
             "message": "데이터 수집 및 크롤링 중..."})
 
-    all_results: list[dict] = []
-
-    # ── (A) Planner-generated keywords ───────────────────────────────
-    for keyword in state.get("search_keywords", []):
-        enhanced = _enhance_korean_query(keyword)
-        writer({"type": "searching", "node": "researcher", "step": 4,
-                "message": f"'{keyword}' 검색 중..."})
-        results = await search_web_async(enhanced, max_results=3)
-        for r in results:
-            r["keyword"] = keyword
-        all_results.extend(results)
-
-    # ── (B) Mandatory domestic Korean market searches ─────────────────
-    # Executed regardless of Planner output to prevent omission of
-    # domestic telco/SI companies (SKT, KT, Samsung SDS, LG CNS, etc.)
-    # that are consistently underrepresented by global-biased queries.
+    keywords = state.get("search_keywords", [])
     domestic_queries = [
         _DOMESTIC_TELCO_SI_QUERY,
         _build_domestic_b2b_query(state.get("competitors", [])),
     ]
-    for query in domestic_queries:
-        writer({"type": "searching", "node": "researcher", "step": 4,
-                "message": "국내 통신·SI 기업 탐색 중..."})
+
+    writer({"type": "searching", "node": "researcher", "step": 4,
+            "message": f"총 {len(keywords) + len(domestic_queries)}개 키워드 병렬 검색 중..."})
+
+    # ── (A) Planner keywords — 병렬 실행 ─────────────────────────────
+    async def _search_keyword(keyword: str) -> list[dict]:
+        enhanced = _enhance_korean_query(keyword)
+        results = await search_web_async(enhanced, max_results=3)
+        for r in results:
+            r["keyword"] = keyword
+        return results
+
+    # ── (B) Mandatory domestic searches — 병렬 실행 ──────────────────
+    async def _search_domestic(query: str) -> list[dict]:
         results = await search_web_async(query, max_results=3)
         for r in results:
             r["keyword"] = query
             r["market_scope"] = "domestic_kr"
-        all_results.extend(results)
+        return results
+
+    # 전체 검색을 동시에 실행
+    keyword_tasks  = [_search_keyword(kw) for kw in keywords]
+    domestic_tasks = [_search_domestic(q) for q in domestic_queries]
+
+    all_batches = await asyncio.gather(*keyword_tasks, *domestic_tasks, return_exceptions=True)
+
+    all_results: list[dict] = []
+    for batch in all_batches:
+        if isinstance(batch, list):
+            all_results.extend(batch)
 
     writer({"type": "stage_complete", "node": "researcher", "step": 4,
-            "message": "관련 자료 수집 완료"})
+            "message": f"자료 수집 완료 ({len(all_results)}건)"})
 
     return {
         "raw_research": all_results,
@@ -465,25 +488,76 @@ async def graph_structuring_node(state: AgentState, writer: StreamWriter) -> dic
 # ──────────────────────────────────────────────────────────────────────
 
 _REPORTER_SYSTEM = """당신은 냉철하고 객관적인 시니어 전략 컨설턴트입니다.
-구조화된 시장 데이터를 바탕으로 C레벨 의사결정자를 위한 최종 마켓 인텔리전스 보고서를 작성합니다.
+구조화된 시장 데이터를 바탕으로 KT GPU IaaS 상품의 국내 경쟁 전략 마켓 인텔리전스 보고서를 작성합니다.
 
-작성 원칙:
-- 감정적 표현, 과장 없이 사실과 데이터 중심으로 서술
-- 각 항목은 구체적이고 실행 가능한 수준으로 작성
-- 한국어로 명확하게 서술"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[보고서 작성 원칙]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 감정적 표현·과장 없이 사실과 데이터 중심으로 서술
+- 경쟁사를 두 그룹으로 명확히 구분:
+    주요 경쟁사(direct, 3곳): GPU IaaS 실제 보유 → 즉각적 대응 전략
+    잠재적 경쟁사(indirect, 2곳): 향후 진입 가능 → 선제적 방어 전략
+- swot_analysis: KT GPU IaaS 관점 SWOT 사분면 — 각 항목에 핵심 키워드 1개(명사, 5자 이내) + 분석 항목 3~4개
+- 한국어로 명확하게 서술
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[직급별 인사이트 작성 기준 — persona_sections 필수]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KT 조직 내 아래 6개 직급 모두에 대해 각각 맞춤형 인사이트를 작성하세요.
+각 직급의 업무 범위·의사결정 권한·시간 지평(time horizon)에 맞게 차별화합니다.
+
+① 직원 (실무자)
+   - 시간 지평: 즉시~3개월
+   - 관점: 경쟁사 제품·기술 동향 파악, 고객 응대 및 영업 현장 활용
+   - 인사이트: 경쟁사 제품 대비 KT GPU IaaS의 구체적 차별점, 고객 질문 대응 포인트
+   - 액션: 현업에서 즉시 활용 가능한 실무 수준 행동
+
+② 팀장 (팀 리더)
+   - 시간 지평: 1~6개월
+   - 관점: 팀 실행 계획 수립, 팀원 역할 배분, 단기 KPI 달성
+   - 인사이트: 경쟁사 공략 세그먼트·채널 분석, 팀 역량 강화 포인트
+   - 액션: 팀 단위 실행 가능한 구체적 과제 (예: 경쟁사 분석 워크숍, 영업 스크립트 개발)
+
+③ 담당상무 (사업부장급)
+   - 시간 지평: 3~12개월
+   - 관점: 사업부 전략, 분기별 목표 달성, 예산·인력 배분 결정
+   - 인사이트: 시장 점유율 변동 리스크, 경쟁사 대응을 위한 투자 우선순위
+   - 액션: 사업부 전략 조정, 예산 재배분, 파트너십 구축 방향
+
+④ 본부장 (본부 단위 리더)
+   - 시간 지평: 6개월~2년
+   - 관점: 본부 포지셔닝, 타 본부와 협력, 중기 시장 전략
+   - 인사이트: 국내 GPU IaaS 시장 구조 변화, 본부 차원의 경쟁 우위 확보 방향
+   - 액션: 본부 중기 전략 수립, 조직 간 협업 과제, 핵심 역량 투자 결정
+
+⑤ 부문장 (사업 부문 총괄)
+   - 시간 지평: 1~3년
+   - 관점: 부문 포트폴리오 전략, 신사업 투자 판단, 시장 리더십 확보
+   - 인사이트: GPU IaaS 시장 성장성과 KT의 포지셔닝 기회, M&A·파트너십 가능성
+   - 액션: 중장기 투자 결정, 포트폴리오 조정, 시장 선점 전략 수립
+
+⑥ 대표이사 (CEO)
+   - 시간 지평: 3~5년
+   - 관점: 기업 전략, 이사회 보고, 장기 시장 리더십 및 기업 가치
+   - 인사이트: KT가 국내 GPU IaaS 시장에서 장기 리더십을 확보하기 위한 핵심 전략 방향
+   - 액션: 이사회·주주 소통 메시지, 전사 전략 방향 결정, 장기 투자 어젠다"""
 
 _REPORTER_HUMAN = """분석 데이터 종합:
 
-제품 설명: {product_description}
+제품: KT GPU IaaS (국내 엔터프라이즈·SMB 대상)
+추가 설명: {product_description}
 시장 포지셔닝: {market_positioning}
 
-핵심 경쟁사 (Phase 2):
+핵심 경쟁사 (Phase 2 — 주요 3곳 + 잠재 2곳):
 {competitors_summary}
 
 Graph RAG 인사이트:
 {graph_insights}
 
-위 데이터를 바탕으로 최종 마켓 인텔리전스 보고서를 작성해 주세요."""
+위 데이터를 바탕으로 최종 마켓 인텔리전스 보고서를 작성하세요.
+반드시 아래 두 항목을 포함해야 합니다:
+1. swot_analysis: S/W/O/T 각 사분면에 핵심 키워드 1개 + 분석 항목 3~4개
+2. persona_sections: 직원/팀장/담당상무/본부장/부문장/대표이사 6개 직급 모두"""
 
 
 async def reporter_node(state: AgentState, writer: StreamWriter) -> dict[str, Any]:

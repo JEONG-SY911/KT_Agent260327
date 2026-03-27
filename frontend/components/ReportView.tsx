@@ -6,13 +6,17 @@ import {
   BarChart2,
   BookOpen,
   Building2,
+  ChevronRight,
   ExternalLink,
   Globe,
+  Lightbulb,
   Network,
   Shield,
   TrendingUp,
+  Users,
 } from "lucide-react";
-import type { AnalysisResult, GraphNode, Phase1CompetitorItem } from "@/types/analysis";
+import { useState } from "react";
+import type { AnalysisResult, GraphNode, PersonaSection, Phase1CompetitorItem, SwotAnalysis, SwotQuadrant } from "@/types/analysis";
 
 interface ReportViewProps {
   result: AnalysisResult;
@@ -118,6 +122,166 @@ function CompetitorTypeBadge({ type }: { type: Phase1CompetitorItem["type"] }) {
     <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${className}`}>
       {label}
     </span>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// SWOT component
+// ──────────────────────────────────────────────────────────────────────
+
+const SWOT_CONFIG = {
+  strengths:    { label: "강점", abbr: "S", bg: "bg-emerald-50", border: "border-emerald-300", keyword: "text-emerald-700", abbr_bg: "bg-emerald-600", dot: "bg-emerald-500" },
+  weaknesses:   { label: "약점", abbr: "W", bg: "bg-red-50",     border: "border-red-300",     keyword: "text-red-700",     abbr_bg: "bg-red-600",     dot: "bg-red-500" },
+  opportunities:{ label: "기회", abbr: "O", bg: "bg-blue-50",    border: "border-blue-300",    keyword: "text-blue-700",    abbr_bg: "bg-blue-600",    dot: "bg-blue-500" },
+  threats:      { label: "위협", abbr: "T", bg: "bg-amber-50",   border: "border-amber-300",   keyword: "text-amber-700",   abbr_bg: "bg-amber-600",   dot: "bg-amber-500" },
+} as const;
+
+function SwotCell({ quadrant, data }: { quadrant: keyof typeof SWOT_CONFIG; data: SwotQuadrant }) {
+  const cfg = SWOT_CONFIG[quadrant];
+  return (
+    <div className={`rounded-xl border-2 ${cfg.border} ${cfg.bg} p-4 flex flex-col`}>
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-2">
+        <span className={`flex-shrink-0 w-6 h-6 rounded-full ${cfg.abbr_bg} text-white text-xs font-bold flex items-center justify-center`}>
+          {cfg.abbr}
+        </span>
+        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{cfg.label}</span>
+      </div>
+      {/* Keyword */}
+      <p className={`text-lg font-extrabold ${cfg.keyword} mb-3 leading-tight`}>
+        {data.keyword}
+      </p>
+      {/* Points */}
+      <ul className="space-y-1.5 flex-1">
+        {data.points.map((point, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <span className={`flex-shrink-0 w-1.5 h-1.5 rounded-full mt-1.5 ${cfg.dot}`} />
+            <span className="text-xs text-slate-700 leading-relaxed">{point}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function SwotSection({ swot }: { swot: SwotAnalysis }) {
+  return (
+    <div className="card p-6">
+      <SectionHeader icon={<BarChart2 className="h-4 w-4" />} title="SWOT 분석" />
+      <p className="text-xs text-slate-400 mb-4">KT GPU IaaS 관점의 내부 역량과 외부 환경 분석</p>
+      <div className="grid grid-cols-2 gap-3">
+        <SwotCell quadrant="strengths"     data={swot.strengths} />
+        <SwotCell quadrant="weaknesses"    data={swot.weaknesses} />
+        <SwotCell quadrant="opportunities" data={swot.opportunities} />
+        <SwotCell quadrant="threats"       data={swot.threats} />
+      </div>
+      {/* Axis labels */}
+      <div className="flex justify-between mt-2 px-1">
+        <span className="text-xs text-slate-400">← 내부 요인</span>
+        <span className="text-xs text-slate-400">외부 요인 →</span>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Persona config
+// ──────────────────────────────────────────────────────────────────────
+
+const PERSONA_CONFIG: Record<string, { horizon: string; color: string; bg: string; border: string; badge: string }> = {
+  "직원":    { horizon: "즉시~3개월",  color: "text-slate-700",   bg: "bg-slate-50",    border: "border-slate-200", badge: "bg-slate-100 text-slate-600" },
+  "팀장":    { horizon: "1~6개월",    color: "text-blue-700",    bg: "bg-blue-50",     border: "border-blue-200",  badge: "bg-blue-100 text-blue-700" },
+  "담당상무": { horizon: "3~12개월",   color: "text-violet-700",  bg: "bg-violet-50",   border: "border-violet-200",badge: "bg-violet-100 text-violet-700" },
+  "본부장":  { horizon: "6개월~2년",  color: "text-amber-700",   bg: "bg-amber-50",    border: "border-amber-200", badge: "bg-amber-100 text-amber-700" },
+  "부문장":  { horizon: "1~3년",      color: "text-orange-700",  bg: "bg-orange-50",   border: "border-orange-200",badge: "bg-orange-100 text-orange-700" },
+  "대표이사": { horizon: "3~5년",      color: "text-red-700",     bg: "bg-red-50",      border: "border-red-200",   badge: "bg-red-100 text-red-700" },
+};
+
+function PersonaInsightsSection({ sections }: { sections: PersonaSection[] }) {
+  const [active, setActive] = useState(sections[0]?.persona ?? "직원");
+  const current = sections.find((s) => s.persona === active) ?? sections[0];
+  if (!current) return null;
+  const cfg = PERSONA_CONFIG[current.persona] ?? PERSONA_CONFIG["직원"];
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="p-6 pb-0">
+        <div className="flex items-center gap-2 mb-4">
+          <Users className="h-4 w-4 text-slate-500" />
+          <h2 className="section-title">직급별 맞춤 인사이트</h2>
+        </div>
+        {/* Tab bar */}
+        <div className="flex gap-1 overflow-x-auto pb-0 border-b border-slate-200">
+          {sections.map((s) => {
+            const c = PERSONA_CONFIG[s.persona] ?? PERSONA_CONFIG["직원"];
+            const isActive = s.persona === active;
+            return (
+              <button
+                key={s.persona}
+                onClick={() => setActive(s.persona)}
+                className={`flex-shrink-0 px-4 py-2 text-xs font-semibold rounded-t transition-colors border-b-2 -mb-px ${
+                  isActive
+                    ? `${c.color} border-current bg-white`
+                    : "text-slate-400 border-transparent hover:text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                {s.persona}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Tab content */}
+      <div className={`p-6 ${cfg.bg}`}>
+        {/* Header */}
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <p className={`text-base font-bold ${cfg.color}`}>{current.persona}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{current.focus}</p>
+          </div>
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${cfg.badge}`}>
+            시간 지평 {cfg.horizon}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Key Insights */}
+          <div className={`rounded-lg border p-4 bg-white ${cfg.border}`}>
+            <div className="flex items-center gap-1.5 mb-3">
+              <Lightbulb className={`h-3.5 w-3.5 ${cfg.color}`} />
+              <p className={`text-xs font-semibold ${cfg.color}`}>핵심 인사이트</p>
+            </div>
+            <ul className="space-y-2.5">
+              {current.key_insights.map((insight, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className={`flex-shrink-0 flex items-center justify-center w-4 h-4 mt-0.5 rounded-full text-white text-xs font-bold ${cfg.color.replace("text-", "bg-")}`}>
+                    {i + 1}
+                  </span>
+                  <span className="text-xs text-slate-700 leading-relaxed">{insight}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Action Items */}
+          <div className={`rounded-lg border p-4 bg-white ${cfg.border}`}>
+            <div className="flex items-center gap-1.5 mb-3">
+              <ChevronRight className={`h-3.5 w-3.5 ${cfg.color}`} />
+              <p className={`text-xs font-semibold ${cfg.color}`}>액션 아이템</p>
+            </div>
+            <ul className="space-y-2.5">
+              {current.action_items.map((action, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className={`flex-shrink-0 text-xs font-bold mt-0.5 ${cfg.color}`}>→</span>
+                  <span className="text-xs text-slate-700 leading-relaxed">{action}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -251,15 +415,22 @@ export function ReportView({ result }: ReportViewProps) {
 
       {/* ── 4. Phase 2: Deep Competitor Profiles ─────────────────── */}
       <div>
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-1">
           <Building2 className="h-4 w-4 text-slate-500" />
           <h2 className="section-title">
-            핵심 경쟁사 심층 분석 — Phase 2 ({competitors.length}개 선정)
+            경쟁사 심층 분석 — Phase 2
           </h2>
         </div>
-        <p className="text-xs text-slate-400 mb-4">
-          Phase 1 목록에서 AI가 선정한 가장 위협적인 경쟁사에 대한 심층 프로필입니다.
-        </p>
+        <div className="flex items-center gap-3 mb-4">
+          <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
+            주요 경쟁사 (GPU IaaS 보유) {directCompetitors.length}곳
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block" />
+            잠재적 경쟁사 (향후 진입 가능) {indirectCompetitors.length}곳
+          </span>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {directCompetitors.map((c) => (
@@ -374,7 +545,12 @@ export function ReportView({ result }: ReportViewProps) {
         </div>
       </div>
 
-      {/* ── 6. Graph RAG Insights ─────────────────────────────────── */}
+      {/* ── 6. SWOT Analysis ─────────────────────────────────────── */}
+      {final_report.swot_analysis && (
+        <SwotSection swot={final_report.swot_analysis} />
+      )}
+
+      {/* ── 7. Graph RAG Insights ─────────────────────────────────── */}
       <div className="card p-6">
         <SectionHeader icon={<Network className="h-4 w-4" />} title="Graph RAG 기반 인사이트" />
 
@@ -452,7 +628,12 @@ export function ReportView({ result }: ReportViewProps) {
         <BulletList items={final_report.strategic_recommendations} variant="recommendation" />
       </div>
 
-      {/* ── 8. References ─────────────────────────────────────────── */}
+      {/* ── 8. Persona Insights ───────────────────────────────────── */}
+      {final_report.persona_sections?.length > 0 && (
+        <PersonaInsightsSection sections={final_report.persona_sections} />
+      )}
+
+      {/* ── 9. References ─────────────────────────────────────────── */}
       {references.length > 0 && (
         <div className="card p-6">
           <SectionHeader

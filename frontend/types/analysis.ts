@@ -52,6 +52,25 @@ export interface KnowledgeGraph {
   edges: GraphEdge[];
 }
 
+export interface SwotQuadrant {
+  keyword: string;
+  points: string[];
+}
+
+export interface SwotAnalysis {
+  strengths: SwotQuadrant;
+  weaknesses: SwotQuadrant;
+  opportunities: SwotQuadrant;
+  threats: SwotQuadrant;
+}
+
+export interface PersonaSection {
+  persona: string;       // 직원 | 팀장 | 담당상무 | 본부장 | 부문장 | 대표이사
+  focus: string;         // 해당 직급의 분석 초점 한 줄 요약
+  key_insights: string[];
+  action_items: string[];
+}
+
 export interface FinalReport {
   executive_summary: string;
   positioning_summary: string;
@@ -59,6 +78,8 @@ export interface FinalReport {
   threat_factors: string[];
   strategic_recommendations: string[];
   competitive_analysis_summary: string;
+  swot_analysis: SwotAnalysis;
+  persona_sections: PersonaSection[];
 }
 
 export interface AnalysisResult {

@@ -212,3 +212,6 @@ frontend/out/
 frontend/node_modules/
 frontend/.env.local
 frontend/.env*.local
+
+# frontend/lib is a Next.js source directory, not a Python lib
+!frontend/lib/
