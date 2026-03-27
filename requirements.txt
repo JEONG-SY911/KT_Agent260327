@@ -21,3 +21,9 @@ duckduckgo-search
 langchain-graph-retriever
 graph-retriever
 graph-rag-example-helpers
+
+# Market Intelligence Agent backend
+fastapi[standard]
+uvicorn[standard]
+sse-starlette
+python-docx

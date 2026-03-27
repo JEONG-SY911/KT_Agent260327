@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@layer base {
+  html {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white border border-slate-200 rounded-lg;
+  }
+
+  .section-title {
+    @apply text-sm font-semibold text-slate-500 uppercase tracking-wider;
+  }
+
+  .badge-company {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium
+           bg-blue-50 text-blue-700 border border-blue-200;
+  }
+
+  .badge-product {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium
+           bg-violet-50 text-violet-700 border border-violet-200;
+  }
+
+  .badge-trend {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium
+           bg-emerald-50 text-emerald-700 border border-emerald-200;
+  }
+
+  .badge-threat {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium
+           bg-red-50 text-red-700 border border-red-200;
+  }
+}
+
+/* Skeleton shimmer animation */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #f1f5f9 25%,
+    #e2e8f0 50%,
+    #f1f5f9 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite;
+}
